@@ -22,10 +22,18 @@ export function getSupabaseServerConfig(env = process.env): { url: string; servi
   if (!url) throw new SupabaseServiceRoleKeyError('Missing VITE_SUPABASE_URL.')
   if (!serviceRoleKey) throw new SupabaseServiceRoleKeyError('Missing SUPABASE_SERVICE_ROLE_KEY.')
 
+  if (serviceRoleKey.startsWith('sb_secret_')) return { url, serviceRoleKey }
+
   const role = decodeJwtPayload(serviceRoleKey)?.role
   if (role !== 'service_role') {
+    if (serviceRoleKey.startsWith('sb_publishable_')) {
+      throw new SupabaseServiceRoleKeyError(
+        'SUPABASE_SERVICE_ROLE_KEY must be a Supabase secret key (sb_secret_...) or legacy service_role key, but current key is a publishable key.',
+      )
+    }
+
     throw new SupabaseServiceRoleKeyError(
-      `SUPABASE_SERVICE_ROLE_KEY must be a Supabase service_role key, but current key role is ${role || 'unknown'}.`,
+      `SUPABASE_SERVICE_ROLE_KEY must be a Supabase secret key (sb_secret_...) or legacy service_role key, but current key role is ${role || 'unknown'}.`,
     )
   }
 

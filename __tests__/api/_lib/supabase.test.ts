@@ -23,4 +23,21 @@ describe('Supabase server config', () => {
       serviceRoleKey: fakeSupabaseJwt('service_role'),
     })
   })
+
+  it('accepts new Supabase secret keys', () => {
+    expect(getSupabaseServerConfig({
+      VITE_SUPABASE_URL: 'https://project.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'sb_secret_123456789',
+    } as NodeJS.ProcessEnv)).toEqual({
+      url: 'https://project.supabase.co',
+      serviceRoleKey: 'sb_secret_123456789',
+    })
+  })
+
+  it('rejects new Supabase publishable keys', () => {
+    expect(() => getSupabaseServerConfig({
+      VITE_SUPABASE_URL: 'https://project.supabase.co',
+      SUPABASE_SERVICE_ROLE_KEY: 'sb_publishable_123456789',
+    } as NodeJS.ProcessEnv)).toThrow('publishable key')
+  })
 })
