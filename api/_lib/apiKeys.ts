@@ -93,6 +93,29 @@ export async function revokeApiKey(userId: string, id: string): Promise<void> {
   if (error) throw apiKeyStorageError('revoke', error)
 }
 
+export async function updateApiKey(userId: string, id: string, name: string): Promise<ApiKeySummary> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase
+    .from('api_keys')
+    .update({ name })
+    .eq('id', id)
+    .eq('user_id', userId)
+    .select(API_KEY_PUBLIC_COLUMNS)
+    .single()
+  if (error || !data) throw apiKeyStorageError('update', error)
+  return toApiKeySummary(data as ApiKeySummary)
+}
+
+export async function deleteApiKey(userId: string, id: string): Promise<void> {
+  const supabase = getSupabase()
+  const { error } = await supabase
+    .from('api_keys')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId)
+  if (error) throw apiKeyStorageError('delete', error)
+}
+
 export async function verifyBearerApiKey(authHeader: string | undefined): Promise<PublicAuthUser | null> {
   const match = authHeader?.match(/^Bearer\s+(.+)$/i)
   if (!match) return null

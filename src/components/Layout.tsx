@@ -27,6 +27,14 @@ export default function Layout() {
           >
             CLI
           </NavLink>
+          <NavLink
+            to="/api-keys"
+            className={({ isActive }) =>
+              `text-xs font-medium transition ${isActive ? 'text-zinc-950' : 'text-zinc-500 hover:text-zinc-900'}`
+            }
+          >
+            API Keys
+          </NavLink>
         </div>
 
         <div className="flex items-center gap-1">

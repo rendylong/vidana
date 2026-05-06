@@ -3,10 +3,12 @@ import {
   createApiKey,
   createApiKeySecret,
   ApiKeyStorageNotInitializedError,
+  deleteApiKey,
   hashApiKeySecret,
   isApiKeySecret,
   keyPrefix,
   listApiKeys,
+  updateApiKey,
   verifyApiKeySecret,
   verifyBearerApiKey,
 } from '../../../api/_lib/apiKeys'
@@ -49,6 +51,7 @@ function createSupabaseMock(options: {
     selectColumns: [] as Array<string | undefined>,
     insertPayloads: [] as unknown[],
     updatePayloads: [] as unknown[],
+    deleteCalls: 0,
     eqCalls: [] as Array<[string, unknown]>,
     isCalls: [] as Array<[string, unknown]>,
   }
@@ -56,7 +59,7 @@ function createSupabaseMock(options: {
   const supabase = {
     from: vi.fn((table: string) => {
       state.fromCalls.push(table)
-      let mode: 'select' | 'insert' | 'update' = 'select'
+      let mode: 'select' | 'insert' | 'update' | 'delete' = 'select'
       const chain = {
         insert: vi.fn((payload: unknown) => {
           mode = 'insert'
@@ -66,6 +69,11 @@ function createSupabaseMock(options: {
         update: vi.fn((payload: unknown) => {
           mode = 'update'
           state.updatePayloads.push(payload)
+          return chain
+        }),
+        delete: vi.fn(() => {
+          mode = 'delete'
+          state.deleteCalls += 1
           return chain
         }),
         select: vi.fn((columns?: string) => {
@@ -78,7 +86,7 @@ function createSupabaseMock(options: {
         })),
         eq: vi.fn((column: string, value: unknown) => {
           state.eqCalls.push([column, value])
-          if (mode === 'update') return Promise.resolve({ error: null })
+          void mode
           return chain
         }),
         is: vi.fn(async (column: string, value: unknown) => {
@@ -202,5 +210,22 @@ describe('api key helpers', () => {
     expect(state.isCalls).toContainEqual(['revoked_at', null])
     expect(state.updatePayloads[0]).toHaveProperty('last_used_at')
     expect(state.eqCalls).toContainEqual(['id', 'right-key'])
+  })
+
+  it('updates and deletes keys within the user scope', async () => {
+    const { supabase, state } = createSupabaseMock({
+      createData: publicRow({ id: 'key-1', name: 'Renamed key' }),
+    })
+    getSupabaseMock.mockReturnValue(supabase)
+
+    await expect(updateApiKey('user-1', 'key-1', 'Renamed key')).resolves.toMatchObject({
+      id: 'key-1',
+      name: 'Renamed key',
+    })
+    await expect(deleteApiKey('user-1', 'key-1')).resolves.toBeUndefined()
+
+    expect(state.updatePayloads).toContainEqual({ name: 'Renamed key' })
+    expect(state.eqCalls).toContainEqual(['id', 'key-1'])
+    expect(state.eqCalls).toContainEqual(['user_id', 'user-1'])
   })
 })
