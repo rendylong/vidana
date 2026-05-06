@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowClockwise,
+  ArrowLeft,
   ArrowRight,
   CheckCircle,
   Clock,
@@ -16,6 +17,7 @@ import {
   Target,
   TextAa,
   Trash,
+  Sidebar,
   UploadSimple,
   UserFocus,
   Video,
@@ -146,6 +148,7 @@ export default function AgentPage() {
   const [progress, setProgress] = useState<ProgressState>('idle')
   const [error, setError] = useState('')
   const [activeAnalysis, setActiveAnalysis] = useState<Analysis | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const isWorking = ['uploading', 'preparing', 'analyzing', 'finalizing'].includes(progress)
   const selectedFileName = file?.name || uploadedFileName
@@ -382,75 +385,113 @@ export default function AgentPage() {
   }
 
   return (
-    <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-[#f7f8f5] text-zinc-950 lg:grid-cols-[280px_minmax(0,1fr)]">
+    <div
+      className="grid h-full min-h-0 grid-cols-1 overflow-hidden bg-[#f7f8f5] text-zinc-950 transition-[grid-template-columns] duration-300 lg:grid-cols-[var(--sidebar-width)_minmax(0,1fr)]"
+      style={{ '--sidebar-width': sidebarOpen ? '280px' : '56px' } as React.CSSProperties}
+    >
       <aside className="hidden min-h-0 border-r border-zinc-200/80 bg-white/70 lg:flex lg:flex-col">
-        <div className="border-b border-zinc-200/80 p-4">
-          <button
-            onClick={resetWorkspace}
-            className="flex w-full items-center justify-between rounded-xl bg-zinc-950 px-3.5 py-3 text-sm font-medium text-white transition active:scale-[0.98]"
-          >
-            新建分析
-            <ArrowRight size={16} weight="bold" />
-          </button>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <div className="rounded-xl bg-zinc-100 px-3 py-2">
-              <p className="font-mono text-lg tracking-tight text-zinc-900">{briefStats.completed}</p>
-              <p className="text-[11px] text-zinc-500">已完成</p>
-            </div>
-            <div className="rounded-xl bg-zinc-100 px-3 py-2">
-              <p className="font-mono text-lg tracking-tight text-zinc-900">{briefStats.avgScore || '-'}</p>
-              <p className="text-[11px] text-zinc-500">均分</p>
+        {!sidebarOpen ? (
+          <div className="flex h-full flex-col items-center gap-3 p-3">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-950 text-white transition hover:bg-zinc-800 active:scale-[0.96]"
+              aria-label="展开历史分析侧边栏"
+            >
+              <Sidebar size={18} weight="bold" />
+            </button>
+            <button
+              onClick={resetWorkspace}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900 active:scale-[0.96]"
+              aria-label="新建分析"
+            >
+              <ArrowRight size={17} weight="bold" />
+            </button>
+            <div className="mt-2 h-px w-8 bg-zinc-200" />
+            <div className="flex flex-col items-center gap-1 rounded-xl bg-zinc-100 px-2 py-2">
+              <span className="font-mono text-sm text-zinc-900">{briefStats.completed}</span>
+              <span className="text-[10px] text-zinc-400">完成</span>
             </div>
           </div>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-2">
-          {analyses.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center px-8 text-center">
-              <ClockCounterClockwise size={20} className="text-zinc-300" />
-              <p className="mt-3 text-xs text-zinc-400">暂无历史分析</p>
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {analyses.map(analysis => (
+        ) : (
+          <div className="contents">
+            <div className="border-b border-zinc-200/80 p-4">
+              <div className="flex gap-2">
                 <button
-                  key={analysis.id}
-                  onClick={() => navigate(`/analysis/${analysis.id}`)}
-                  className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
-                    id === analysis.id ? 'bg-zinc-950 text-white' : 'text-zinc-600 hover:bg-zinc-100'
-                  }`}
+                  onClick={resetWorkspace}
+                  className="flex min-w-0 flex-1 items-center justify-between rounded-xl bg-zinc-950 px-3.5 py-3 text-sm font-medium text-white transition active:scale-[0.98]"
                 >
-                  <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
-                    id === analysis.id ? 'bg-white/10' : 'bg-white'
-                  }`}>
-                    <FileVideo size={15} weight="fill" className={id === analysis.id ? 'text-white' : 'text-zinc-400'} />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-medium">{resultTitle(analysis)}</p>
-                    <p className={`mt-0.5 text-[10px] ${id === analysis.id ? 'text-white/55' : 'text-zinc-400'}`}>
-                      {formatDate(analysis.created_at)}
-                    </p>
-                  </div>
-                  {analysis.score !== null && (
-                    <span className={`font-mono text-xs font-semibold ${id === analysis.id ? 'text-white' : scoreTone(analysis.score).text}`}>
-                      {analysis.score}
-                    </span>
-                  )}
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={e => handleDeleteHistory(e, analysis.id)}
-                    className={`rounded-md p-1 opacity-0 transition group-hover:opacity-100 ${
-                      id === analysis.id ? 'text-white/50 hover:bg-white/10 hover:text-white' : 'text-zinc-300 hover:bg-red-50 hover:text-red-500'
-                    }`}
-                  >
-                    <Trash size={13} />
-                  </span>
+                  新建分析
+                  <ArrowRight size={16} weight="bold" />
                 </button>
-              ))}
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900 active:scale-[0.98]"
+                  aria-label="收起历史分析侧边栏"
+                >
+                  <ArrowLeft size={16} weight="bold" />
+                </button>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-zinc-100 px-3 py-2">
+                  <p className="font-mono text-lg tracking-tight text-zinc-900">{briefStats.completed}</p>
+                  <p className="text-[11px] text-zinc-500">已完成</p>
+                </div>
+                <div className="rounded-xl bg-zinc-100 px-3 py-2">
+                  <p className="font-mono text-lg tracking-tight text-zinc-900">{briefStats.avgScore || '-'}</p>
+                  <p className="text-[11px] text-zinc-500">均分</p>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-2">
+              {analyses.length === 0 ? (
+                <div className="flex h-full flex-col items-center justify-center px-8 text-center">
+                  <ClockCounterClockwise size={20} className="text-zinc-300" />
+                  <p className="mt-3 text-xs text-zinc-400">暂无历史分析</p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {analyses.map(analysis => (
+                    <button
+                      key={analysis.id}
+                      onClick={() => navigate(`/analysis/${analysis.id}`)}
+                      className={`group flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${
+                        id === analysis.id ? 'bg-zinc-950 text-white' : 'text-zinc-600 hover:bg-zinc-100'
+                      }`}
+                    >
+                      <div className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${
+                        id === analysis.id ? 'bg-white/10' : 'bg-white'
+                      }`}>
+                        <FileVideo size={15} weight="fill" className={id === analysis.id ? 'text-white' : 'text-zinc-400'} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-medium">{resultTitle(analysis)}</p>
+                        <p className={`mt-0.5 text-[10px] ${id === analysis.id ? 'text-white/55' : 'text-zinc-400'}`}>
+                          {formatDate(analysis.created_at)}
+                        </p>
+                      </div>
+                      {analysis.score !== null && (
+                        <span className={`font-mono text-xs font-semibold ${id === analysis.id ? 'text-white' : scoreTone(analysis.score).text}`}>
+                          {analysis.score}
+                        </span>
+                      )}
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={e => handleDeleteHistory(e, analysis.id)}
+                        className={`rounded-md p-1 opacity-0 transition group-hover:opacity-100 ${
+                          id === analysis.id ? 'text-white/50 hover:bg-white/10 hover:text-white' : 'text-zinc-300 hover:bg-red-50 hover:text-red-500'
+                        }`}
+                      >
+                        <Trash size={13} />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </aside>
 
       <main className="min-h-0 overflow-y-auto">
