@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { findOrCreateUser } from '../_lib/supabase'
+import { findOrCreateUser, SupabaseServiceRoleKeyError } from '../_lib/supabase'
 import { signToken } from '../_lib/auth'
 import { authCookie, clearAuthCookie } from '../_lib/cookies'
 
@@ -65,6 +65,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.redirect('/')
   } catch (err) {
     console.error('OAuth callback error:', err)
+    if (err instanceof SupabaseServiceRoleKeyError) {
+      return res.status(500).json({ error: err.message })
+    }
     res.status(500).json({ error: 'Authentication failed' })
   }
 }

@@ -3,27 +3,57 @@ import type { User, Analysis } from './types'
 
 let _supabase: SupabaseClient | null = null
 
+export class SupabaseServiceRoleKeyError extends Error {}
+
+function decodeJwtPayload(token: string): { role?: string } | null {
+  try {
+    const payload = token.split('.')[1]
+    if (!payload) return null
+    return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as { role?: string }
+  } catch {
+    return null
+  }
+}
+
+export function getSupabaseServerConfig(env = process.env): { url: string; serviceRoleKey: string } {
+  const url = env.VITE_SUPABASE_URL
+  const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!url) throw new SupabaseServiceRoleKeyError('Missing VITE_SUPABASE_URL.')
+  if (!serviceRoleKey) throw new SupabaseServiceRoleKeyError('Missing SUPABASE_SERVICE_ROLE_KEY.')
+
+  const role = decodeJwtPayload(serviceRoleKey)?.role
+  if (role !== 'service_role') {
+    throw new SupabaseServiceRoleKeyError(
+      `SUPABASE_SERVICE_ROLE_KEY must be a Supabase service_role key, but current key role is ${role || 'unknown'}.`,
+    )
+  }
+
+  return { url, serviceRoleKey }
+}
+
 export function getSupabase(): SupabaseClient {
   if (!_supabase) {
-    _supabase = createClient(
-      process.env.VITE_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    )
+    const { url, serviceRoleKey } = getSupabaseServerConfig()
+    _supabase = createClient(url, serviceRoleKey)
   }
   return _supabase
 }
 
 export async function findOrCreateUser(feishuId: string, name: string, avatarUrl: string): Promise<User> {
   const supabase = getSupabase()
-  const { data: existing } = await supabase.from('users').select('*').eq('feishu_id', feishuId).single()
+  const { data: existing, error: existingError } = await supabase.from('users').select('*').eq('feishu_id', feishuId).maybeSingle()
+  if (existingError) throw new Error(`Failed to find user: ${existingError.message}`)
   if (existing) {
     if (existing.name !== name || existing.avatar_url !== avatarUrl) {
-      const { data } = await supabase.from('users').update({ name, avatar_url: avatarUrl }).eq('id', existing.id).select().single()
+      const { data, error } = await supabase.from('users').update({ name, avatar_url: avatarUrl }).eq('id', existing.id).select().single()
+      if (error || !data) throw new Error(`Failed to update user: ${error?.message || 'empty response'}`)
       return data as User
     }
     return existing as User
   }
-  const { data } = await supabase.from('users').insert({ feishu_id: feishuId, name, avatar_url: avatarUrl }).select().single()
+  const { data, error } = await supabase.from('users').insert({ feishu_id: feishuId, name, avatar_url: avatarUrl }).select().single()
+  if (error || !data) throw new Error(`Failed to create user: ${error?.message || 'empty response'}`)
   return data as User
 }
 
@@ -69,6 +99,26 @@ export async function deleteAnalysis(id: string, userId: string): Promise<boolea
 
 export async function getSignedUrl(storagePath: string): Promise<string> {
   const supabase = getSupabase()
-  const { data } = await supabase.storage.from('videos').createSignedUrl(storagePath, 3600)
-  return data!.signedUrl
+  const { data, error } = await supabase.storage.from('videos').createSignedUrl(storagePath, 3600)
+  if (error || !data?.signedUrl) throw new Error(`Failed to create signed URL: ${error?.message || 'empty response'}`)
+  return data.signedUrl
+}
+
+function mimeFromPath(storagePath: string): string {
+  const ext = storagePath.split('.').pop()?.toLowerCase()
+  if (ext === 'mov') return 'video/quicktime'
+  if (ext === 'avi') return 'video/x-msvideo'
+  if (ext === 'wmv') return 'video/x-ms-wmv'
+  if (ext === 'webm') return 'video/webm'
+  return 'video/mp4'
+}
+
+export async function getVideoDataUrl(storagePath: string): Promise<string> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase.storage.from('videos').download(storagePath)
+  if (error || !data) throw new Error(`Failed to download video from storage: ${error?.message || 'empty response'}`)
+
+  const base64 = Buffer.from(await data.arrayBuffer()).toString('base64')
+  const mimeType = data.type || mimeFromPath(storagePath)
+  return `data:${mimeType};base64,${base64}`
 }
