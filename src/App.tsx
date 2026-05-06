@@ -1,9 +1,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './hooks/useAuth'
 import Layout from './components/Layout'
-import ProtectedRoute from './components/ProtectedRoute'
-import HomePage from './pages/HomePage'
-import AnalysisPage from './pages/AnalysisPage'
+import AgentPage from './pages/AgentPage'
+import CliPage from './pages/CliPage'
 import HistoryPage from './pages/HistoryPage'
 
 export default function App() {
@@ -12,9 +11,10 @@ export default function App() {
       <AuthProvider>
         <Routes>
           <Route element={<Layout />}>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/analysis/:id" element={<ProtectedRoute><AnalysisPage /></ProtectedRoute>} />
-            <Route path="/history" element={<ProtectedRoute><HistoryPage /></ProtectedRoute>} />
+            <Route path="/" element={<AgentPage />} />
+            <Route path="/analysis/:id" element={<AgentPage />} />
+            <Route path="/history" element={<HistoryPage />} />
+            <Route path="/cli" element={<CliPage />} />
           </Route>
         </Routes>
       </AuthProvider>
