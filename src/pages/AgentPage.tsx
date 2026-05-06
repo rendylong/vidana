@@ -498,22 +498,6 @@ export default function AgentPage() {
         <div className="mx-auto grid w-full max-w-[1400px] gap-5 px-4 py-5 md:px-6 lg:grid-cols-[minmax(360px,480px)_minmax(0,1fr)] lg:py-7">
           <section className="space-y-5">
             <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-[0_24px_80px_-60px_rgba(24,24,27,0.5)]">
-              <div className="flex items-start justify-between gap-5">
-                <div>
-                  <p className="text-xs font-medium text-zinc-500">Vidana analysis</p>
-                  <h1 className="mt-2 text-2xl font-semibold leading-tight tracking-tight text-zinc-950 md:text-3xl">
-                    视频投放前，把问题先挑出来
-                  </h1>
-                </div>
-                <div className={`hidden rounded-full px-3 py-1.5 text-xs font-medium md:flex ${
-                  progress === 'error' ? 'bg-red-50 text-red-600' : progress === 'done' ? 'bg-emerald-50 text-emerald-600' : 'bg-zinc-100 text-zinc-500'
-                }`}>
-                  {progressCopy[progress]}
-                </div>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-[0_24px_80px_-60px_rgba(24,24,27,0.5)]">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold tracking-tight text-zinc-950">分析条件</h2>
                 {(file || storagePath || result) && (
