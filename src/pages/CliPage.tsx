@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Copy, Key, Terminal, Trash } from '@phosphor-icons/react'
 import { useAuth } from '../hooks/useAuth'
 import type { ApiKeySummary, CreatedApiKeyResponse } from '../lib/types'
@@ -24,7 +24,7 @@ export default function CliPage() {
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  const refreshKeys = async () => {
+  const refreshKeys = useCallback(async () => {
     if (!user) return
     setError('')
     try {
@@ -35,11 +35,11 @@ export default function CliPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'API Key 列表加载失败')
     }
-  }
+  }, [user])
 
   useEffect(() => {
     void refreshKeys()
-  }, [user])
+  }, [refreshKeys])
 
   const createKey = async () => {
     setError('')
