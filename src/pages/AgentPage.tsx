@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowClockwise,
-  ArrowLeft,
   ArrowRight,
   CheckCircle,
   Clock,
@@ -13,11 +12,12 @@ import {
   Info,
   MusicNote,
   SealCheck,
+  Sidebar,
+  SidebarSimple,
   Spinner,
   Target,
   TextAa,
   Trash,
-  Sidebar,
   UploadSimple,
   UserFocus,
   Video,
@@ -394,17 +394,17 @@ export default function AgentPage() {
           <div className="flex h-full flex-col items-center gap-3 p-3">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-950 text-white transition hover:bg-zinc-800 active:scale-[0.96]"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 active:scale-[0.96]"
               aria-label="展开历史分析侧边栏"
             >
-              <Sidebar size={18} weight="bold" />
+              <SidebarSimple size={15} weight="regular" />
             </button>
             <button
               onClick={resetWorkspace}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900 active:scale-[0.96]"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 active:scale-[0.96]"
               aria-label="新建分析"
             >
-              <ArrowRight size={17} weight="bold" />
+              <ArrowRight size={15} weight="regular" />
             </button>
             <div className="mt-2 h-px w-8 bg-zinc-200" />
             <div className="flex flex-col items-center gap-1 rounded-xl bg-zinc-100 px-2 py-2">
@@ -425,10 +425,10 @@ export default function AgentPage() {
                 </button>
                 <button
                   onClick={() => setSidebarOpen(false)}
-                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:text-zinc-900 active:scale-[0.98]"
+                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 active:scale-[0.98]"
                   aria-label="收起历史分析侧边栏"
                 >
-                  <ArrowLeft size={16} weight="bold" />
+                  <Sidebar size={16} weight="regular" mirrored />
                 </button>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2">
