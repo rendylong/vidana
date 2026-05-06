@@ -22,38 +22,27 @@ export interface Analysis {
   completed_at: string | null
 }
 
+export interface TimelineEdit {
+  timestamp: string
+  issue: string
+  action: string
+  category: string
+  severity: 'high' | 'medium' | 'low'
+}
+
+export interface GlobalEdit {
+  issue: string
+  action: string
+  category: string
+  severity: 'high' | 'medium' | 'low'
+}
+
 export interface AnalysisReport {
   score: number
   summary: string
-  problems: Problem[]
-  suggestions: Suggestion[]
-  platformAdvice: PlatformAdvice | null
-  audienceFit: AudienceFit | null
-}
-
-export interface Problem {
-  category: string
-  severity: 'high' | 'medium' | 'low'
-  description: string
-  timestamp: string | null
-}
-
-export interface Suggestion {
-  priority: 'high' | 'medium' | 'low'
-  action: string
-  detail: string
-  timeRange: string | null
-}
-
-export interface PlatformAdvice {
-  platform: string
-  tips: string[]
-}
-
-export interface AudienceFit {
-  audience: string
-  score: number
-  reasoning: string
+  timelineEdits: TimelineEdit[]
+  globalEdits: GlobalEdit[]
+  suggestions: string[]
 }
 
 export interface AnalyzeRequest {
@@ -61,4 +50,29 @@ export interface AnalyzeRequest {
   targetAudience?: string
   platform?: string
   context?: string
+}
+
+export interface ApiKeyRecord {
+  id: string
+  user_id: string
+  name: string
+  key_hash: string
+  prefix: string
+  last_used_at: string | null
+  revoked_at: string | null
+  created_at: string
+}
+
+export interface ApiKeySummary {
+  id: string
+  name: string
+  prefix: string
+  last_used_at: string | null
+  revoked_at: string | null
+  created_at: string
+}
+
+export interface PublicAuthUser {
+  userId: string
+  apiKeyId: string
 }
