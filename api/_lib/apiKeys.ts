@@ -7,6 +7,12 @@ export const EXPECTED_KEY_LENGTH = 47
 const API_KEY_SECRET_PATTERN = /^vdn_[A-Za-z0-9_-]{43}$/
 const API_KEY_PUBLIC_COLUMNS = 'id, name, prefix, last_used_at, revoked_at, created_at'
 
+export class ApiKeyStorageNotInitializedError extends Error {
+  constructor() {
+    super('API key storage is not initialized. Apply Supabase migration 002_api_keys.sql.')
+  }
+}
+
 function toApiKeySummary(row: ApiKeySummary): ApiKeySummary {
   return {
     id: row.id,
@@ -16,6 +22,18 @@ function toApiKeySummary(row: ApiKeySummary): ApiKeySummary {
     revoked_at: row.revoked_at,
     created_at: row.created_at,
   }
+}
+
+function isMissingApiKeysTableError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const candidate = error as { code?: string, message?: string }
+  return candidate.code === 'PGRST205'
+    || Boolean(candidate.message?.includes("Could not find the table 'public.api_keys'"))
+}
+
+function apiKeyStorageError(action: string, error: { message?: string } | null | undefined): Error {
+  if (isMissingApiKeysTableError(error)) return new ApiKeyStorageNotInitializedError()
+  return new Error(`Failed to ${action} API key: ${error?.message || 'empty response'}`)
 }
 
 export function createApiKeySecret(): string {
@@ -50,7 +68,7 @@ export async function createApiKey(userId: string, name: string): Promise<{ secr
     key_hash: hashApiKeySecret(secret),
     prefix: keyPrefix(secret),
   }).select(API_KEY_PUBLIC_COLUMNS).single()
-  if (error || !data) throw new Error(`Failed to create API key: ${error?.message || 'empty response'}`)
+  if (error || !data) throw apiKeyStorageError('create', error)
   return { secret, key: toApiKeySummary(data as ApiKeySummary) }
 }
 
@@ -61,7 +79,7 @@ export async function listApiKeys(userId: string): Promise<ApiKeySummary[]> {
     .select(API_KEY_PUBLIC_COLUMNS)
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
-  if (error) throw new Error(`Failed to list API keys: ${error.message}`)
+  if (error) throw apiKeyStorageError('list', error)
   return (data as ApiKeySummary[]).map(toApiKeySummary)
 }
 
@@ -72,7 +90,7 @@ export async function revokeApiKey(userId: string, id: string): Promise<void> {
     .update({ revoked_at: new Date().toISOString() })
     .eq('id', id)
     .eq('user_id', userId)
-  if (error) throw new Error(`Failed to revoke API key: ${error.message}`)
+  if (error) throw apiKeyStorageError('revoke', error)
 }
 
 export async function verifyBearerApiKey(authHeader: string | undefined): Promise<PublicAuthUser | null> {

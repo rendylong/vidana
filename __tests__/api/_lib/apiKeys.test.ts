@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   createApiKey,
   createApiKeySecret,
+  ApiKeyStorageNotInitializedError,
   hashApiKeySecret,
   isApiKeySecret,
   keyPrefix,
@@ -39,6 +40,7 @@ function publicRow(overrides: Partial<MockApiKeyRow> = {}) {
 
 function createSupabaseMock(options: {
   createData?: MockApiKeyRow
+  createError?: { code?: string, message: string }
   listData?: MockApiKeyRow[]
   verifyData?: MockApiKeyRow[]
 } = {}) {
@@ -70,7 +72,10 @@ function createSupabaseMock(options: {
           state.selectColumns.push(columns)
           return chain
         }),
-        single: vi.fn(async () => ({ data: options.createData ?? publicRow(), error: null })),
+        single: vi.fn(async () => ({
+          data: options.createError ? null : options.createData ?? publicRow(),
+          error: options.createError ?? null,
+        })),
         eq: vi.fn((column: string, value: unknown) => {
           state.eqCalls.push([column, value])
           if (mode === 'update') return Promise.resolve({ error: null })
@@ -141,6 +146,18 @@ describe('api key helpers', () => {
     expect(listed).toEqual([listedRow])
     expect(created.key).not.toHaveProperty('key_hash')
     expect(listed[0]).not.toHaveProperty('key_hash')
+  })
+
+  it('surfaces missing api_keys table as an initialization error', async () => {
+    const { supabase } = createSupabaseMock({
+      createError: {
+        code: 'PGRST205',
+        message: "Could not find the table 'public.api_keys' in the schema cache",
+      },
+    })
+    getSupabaseMock.mockReturnValue(supabase)
+
+    await expect(createApiKey('user-1', 'CLI key')).rejects.toBeInstanceOf(ApiKeyStorageNotInitializedError)
   })
 
   it('returns null for malformed Bearer values without calling Supabase', async () => {

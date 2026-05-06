@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { verifyAuth } from '../_lib/auth'
-import { createApiKey, listApiKeys } from '../_lib/apiKeys'
+import { ApiKeyStorageNotInitializedError, createApiKey, listApiKeys } from '../_lib/apiKeys'
 
 interface ApiKeyPublicShape {
   id: string
@@ -45,6 +45,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(201).json({ key: publicKeyShape(key), secret })
   } catch (error) {
     console.error('Failed to manage API keys', error)
+    if (error instanceof ApiKeyStorageNotInitializedError) {
+      return res.status(503).json({ error: error.message })
+    }
     return res.status(500).json({ error: 'Failed to manage API keys' })
   }
 }
