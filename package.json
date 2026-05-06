@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "cli": "node ./bin/vidana.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -38,5 +39,8 @@
     "eslint-plugin-react-refresh": "^0.4.14",
     "globals": "^15.11.0",
     "@types/busboy": "^1.5.4"
+  },
+  "bin": {
+    "vidana": "./bin/vidana.mjs"
   }
 }
