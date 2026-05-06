@@ -8,6 +8,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:full": "set -a; . ./.env.local; set +a; vercel dev --listen 5174",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
