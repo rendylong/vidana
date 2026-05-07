@@ -51,6 +51,38 @@ interface GlobalEdit {
   severity: string
 }
 
+interface BenchmarkResult {
+  contentType: string
+  summary: string
+  coreMechanism: string
+  scriptDesign: {
+    structure: string[]
+    copyPatterns: string[]
+    emotionalCurve: string
+  }
+  visualDesign: {
+    sceneStyle: string
+    shotList: string[]
+    editingRhythm: string
+    subtitleAndAudio: string
+  }
+  hookDesign: {
+    openingHook: string
+    retentionHooks: string[]
+    conversionOrPayoff: string
+  }
+  imitationPlan: {
+    adaptedAngle: string
+    scriptOutline: string[]
+    shotInstructions: string[]
+    copyExamples: string[]
+    avoid: string[]
+  }
+  productionChecklist: string[]
+  risks: string[]
+}
+
+type AgentMode = 'analysis' | 'benchmark'
 type ProgressState = 'idle' | 'uploading' | 'preparing' | 'analyzing' | 'finalizing' | 'done' | 'error'
 
 const categoryConfig: Record<string, { icon: typeof Eye; color: string; label: string }> = {
@@ -114,6 +146,112 @@ function parseReport(report: unknown): AnalysisResult | null {
   }
 }
 
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object')
+}
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
+}
+
+function nestedObject(value: unknown): Record<string, unknown> {
+  return isObject(value) ? value : {}
+}
+
+function parseBenchmarkReport(report: unknown): BenchmarkResult | null {
+  let source = report
+  if (typeof report === 'string') {
+    const cleaned = report.replace(/```(?:json)?\s*/gi, '').replace(/```\s*/g, '').trim()
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+    if (jsonMatch) {
+      try {
+        source = JSON.parse(jsonMatch[0])
+      } catch {
+        return {
+          contentType: '',
+          summary: cleaned,
+          coreMechanism: '',
+          scriptDesign: { structure: [], copyPatterns: [], emotionalCurve: '' },
+          visualDesign: { sceneStyle: '', shotList: [], editingRhythm: '', subtitleAndAudio: '' },
+          hookDesign: { openingHook: '', retentionHooks: [], conversionOrPayoff: '' },
+          imitationPlan: { adaptedAngle: '', scriptOutline: [], shotInstructions: [], copyExamples: [], avoid: [] },
+          productionChecklist: [],
+          risks: [],
+        }
+      }
+    } else {
+      return cleaned ? {
+        contentType: '',
+        summary: cleaned,
+        coreMechanism: '',
+        scriptDesign: { structure: [], copyPatterns: [], emotionalCurve: '' },
+        visualDesign: { sceneStyle: '', shotList: [], editingRhythm: '', subtitleAndAudio: '' },
+        hookDesign: { openingHook: '', retentionHooks: [], conversionOrPayoff: '' },
+        imitationPlan: { adaptedAngle: '', scriptOutline: [], shotInstructions: [], copyExamples: [], avoid: [] },
+        productionChecklist: [],
+        risks: [],
+      } : null
+    }
+  }
+
+  if (!isObject(source)) return null
+  const scriptDesign = nestedObject(source.scriptDesign)
+  const visualDesign = nestedObject(source.visualDesign)
+  const hookDesign = nestedObject(source.hookDesign)
+  const imitationPlan = nestedObject(source.imitationPlan)
+
+  return {
+    contentType: typeof source.contentType === 'string' ? source.contentType : '',
+    summary: typeof source.summary === 'string' ? source.summary : '',
+    coreMechanism: typeof source.coreMechanism === 'string' ? source.coreMechanism : '',
+    scriptDesign: {
+      structure: stringArray(scriptDesign.structure),
+      copyPatterns: stringArray(scriptDesign.copyPatterns),
+      emotionalCurve: typeof scriptDesign.emotionalCurve === 'string' ? scriptDesign.emotionalCurve : '',
+    },
+    visualDesign: {
+      sceneStyle: typeof visualDesign.sceneStyle === 'string' ? visualDesign.sceneStyle : '',
+      shotList: stringArray(visualDesign.shotList),
+      editingRhythm: typeof visualDesign.editingRhythm === 'string' ? visualDesign.editingRhythm : '',
+      subtitleAndAudio: typeof visualDesign.subtitleAndAudio === 'string' ? visualDesign.subtitleAndAudio : '',
+    },
+    hookDesign: {
+      openingHook: typeof hookDesign.openingHook === 'string' ? hookDesign.openingHook : '',
+      retentionHooks: stringArray(hookDesign.retentionHooks),
+      conversionOrPayoff: typeof hookDesign.conversionOrPayoff === 'string' ? hookDesign.conversionOrPayoff : '',
+    },
+    imitationPlan: {
+      adaptedAngle: typeof imitationPlan.adaptedAngle === 'string' ? imitationPlan.adaptedAngle : '',
+      scriptOutline: stringArray(imitationPlan.scriptOutline),
+      shotInstructions: stringArray(imitationPlan.shotInstructions),
+      copyExamples: stringArray(imitationPlan.copyExamples),
+      avoid: stringArray(imitationPlan.avoid),
+    },
+    productionChecklist: stringArray(source.productionChecklist),
+    risks: stringArray(source.risks),
+  }
+}
+
+function parseBenchmarkContext(context: string | null) {
+  const fields = {
+    ipPositioning: '',
+    productOrService: '',
+    targetCustomer: '',
+    benchmarkGoal: '',
+  }
+  if (!context) return fields
+  for (const line of context.split('\n')) {
+    const [key, ...rest] = line.split('：')
+    const value = rest.join('：').trim()
+    if (!value) continue
+    if (key === '账号/IP定位') fields.ipPositioning = value
+    if (key === '产品/服务') fields.productOrService = value
+    if (key === '目标客户') fields.targetCustomer = value
+    if (key === '模仿目标/限制条件') fields.benchmarkGoal = value
+  }
+  return fields
+}
+
 function scoreTone(score: number) {
   if (score >= 80) return { text: 'text-emerald-600', bar: 'bg-emerald-500', ring: 'from-emerald-500' }
   if (score >= 60) return { text: 'text-amber-600', bar: 'bg-amber-400', ring: 'from-amber-400' }
@@ -125,6 +263,13 @@ function formatDate(date: string) {
 }
 
 function resultTitle(analysis: Analysis) {
+  if (analysis.analysis_type === 'benchmark') {
+    const contextFields = parseBenchmarkContext(analysis.context)
+    if (analysis.platform && analysis.target_audience) return `对标 / ${analysis.platform} / ${analysis.target_audience}`
+    if (analysis.platform && contextFields.ipPositioning) return `对标 / ${analysis.platform} / ${contextFields.ipPositioning}`
+    if (analysis.platform) return `对标 / ${analysis.platform}`
+    return '视频对标'
+  }
   if (analysis.target_audience && analysis.platform) return `${analysis.platform} / ${analysis.target_audience}`
   if (analysis.platform) return analysis.platform
   if (analysis.target_audience) return analysis.target_audience
@@ -141,10 +286,16 @@ export default function AgentPage() {
   const [file, setFile] = useState<File | null>(null)
   const [storagePath, setStoragePath] = useState('')
   const [uploadedFileName, setUploadedFileName] = useState('')
+  const [mode, setMode] = useState<AgentMode>('analysis')
   const [targetAudience, setTargetAudience] = useState('')
   const [platform, setPlatform] = useState<Platform | ''>('')
   const [context, setContext] = useState('')
+  const [ipPositioning, setIpPositioning] = useState('')
+  const [productOrService, setProductOrService] = useState('')
+  const [targetCustomer, setTargetCustomer] = useState('')
+  const [benchmarkGoal, setBenchmarkGoal] = useState('')
   const [result, setResult] = useState<AnalysisResult | null>(null)
+  const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResult | null>(null)
   const [progress, setProgress] = useState<ProgressState>('idle')
   const [error, setError] = useState('')
   const [activeAnalysis, setActiveAnalysis] = useState<Analysis | null>(null)
@@ -154,7 +305,10 @@ export default function AgentPage() {
   const selectedFileName = file?.name || uploadedFileName
   const selectedFileSize = file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : ''
   const canAnalyze = Boolean((file || storagePath) && targetAudience.trim() && platform && !isWorking)
+  const canBenchmark = Boolean((file || storagePath) && ipPositioning.trim() && platform && !isWorking)
+  const canSubmit = mode === 'analysis' ? canAnalyze : canBenchmark
   const tone = scoreTone(result?.score ?? 0)
+  const currentProgressCopy = mode === 'benchmark' && progress === 'analyzing' ? 'AI 正在拆解参考视频' : progressCopy[progress]
 
   const refreshHistory = useCallback(() => {
     if (!user) return
@@ -173,26 +327,45 @@ export default function AgentPage() {
         const res = await fetch(`/api/history/${id}`, { credentials: 'include' })
         if (!res.ok) return
         const analysis: Analysis = await res.json()
+        const loadedMode: AgentMode = analysis.analysis_type === 'benchmark' ? 'benchmark' : 'analysis'
+        const benchmarkFields = parseBenchmarkContext(analysis.context)
         setActiveAnalysis(analysis)
+        setMode(loadedMode)
         setStoragePath(analysis.video_url)
         setUploadedFileName('历史视频素材')
-        setTargetAudience(analysis.target_audience || '')
+        setTargetAudience(loadedMode === 'analysis' ? analysis.target_audience || '' : '')
         setPlatform((analysis.platform as Platform) || '')
-        setContext(analysis.context || '')
+        setContext(loadedMode === 'analysis' ? analysis.context || '' : '')
+        setIpPositioning(loadedMode === 'benchmark' ? benchmarkFields.ipPositioning : '')
+        setProductOrService(loadedMode === 'benchmark' ? benchmarkFields.productOrService : '')
+        setTargetCustomer(loadedMode === 'benchmark' ? analysis.target_audience || benchmarkFields.targetCustomer : '')
+        setBenchmarkGoal(loadedMode === 'benchmark' ? benchmarkFields.benchmarkGoal : '')
         setFile(null)
         setError('')
         if (analysis.status === 'completed' && analysis.report) {
-          const parsed = parseReport(analysis.report)
-          if (parsed) {
-            setResult(parsed)
-            setProgress('done')
+          if (loadedMode === 'benchmark') {
+            const parsed = parseBenchmarkReport(analysis.report)
+            setResult(null)
+            if (parsed) {
+              setBenchmarkResult(parsed)
+              setProgress('done')
+            }
+          } else {
+            const parsed = parseReport(analysis.report)
+            setBenchmarkResult(null)
+            if (parsed) {
+              setResult(parsed)
+              setProgress('done')
+            }
           }
         } else if (analysis.status === 'failed') {
           setResult(null)
+          setBenchmarkResult(null)
           setProgress('error')
           setError('这条历史分析未成功完成')
         } else {
           setResult(null)
+          setBenchmarkResult(null)
           setProgress('idle')
         }
       } catch {
@@ -208,7 +381,12 @@ export default function AgentPage() {
     setTargetAudience('')
     setPlatform('')
     setContext('')
+    setIpPositioning('')
+    setProductOrService('')
+    setTargetCustomer('')
+    setBenchmarkGoal('')
     setResult(null)
+    setBenchmarkResult(null)
     setProgress('idle')
     setError('')
     setActiveAnalysis(null)
@@ -221,6 +399,7 @@ export default function AgentPage() {
     setStoragePath('')
     setUploadedFileName('')
     setResult(null)
+    setBenchmarkResult(null)
     setActiveAnalysis(null)
     setProgress('idle')
     setError('')
@@ -243,6 +422,16 @@ export default function AgentPage() {
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || '上传失败')
     return data.storagePath as string
+  }
+
+  const switchMode = (nextMode: AgentMode) => {
+    setMode(nextMode)
+    setResult(null)
+    setBenchmarkResult(null)
+    setError('')
+    setProgress('idle')
+    setActiveAnalysis(null)
+    if (id) navigate('/')
   }
 
   const handleAnalyze = async () => {
@@ -352,6 +541,116 @@ export default function AgentPage() {
     } catch (err) {
       setProgress('error')
       setError(err instanceof Error ? err.message : '分析失败，请稍后再试')
+    }
+  }
+
+  const handleBenchmark = async () => {
+    if (!user || isWorking) return
+    if (!file && !storagePath) {
+      setError('请先上传参考视频')
+      return
+    }
+    if (!ipPositioning.trim()) {
+      setError('请填写你的账号/IP定位')
+      return
+    }
+    if (!platform) {
+      setError('请选择发布平台')
+      return
+    }
+
+    setError('')
+    setResult(null)
+    setBenchmarkResult(null)
+    setProgress(file && !storagePath ? 'uploading' : 'preparing')
+
+    try {
+      let path = storagePath
+      if (file && !path) {
+        path = await handleUpload(file)
+        setStoragePath(path)
+        setUploadedFileName(file.name)
+        setFile(null)
+      }
+
+      setProgress('preparing')
+      const res = await fetch('/api/benchmark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          storagePath: path,
+          ipPositioning: ipPositioning.trim(),
+          platform,
+          productOrService: productOrService.trim() || undefined,
+          targetCustomer: targetCustomer.trim() || undefined,
+          benchmarkGoal: benchmarkGoal.trim() || undefined,
+        }),
+      })
+
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({ error: '对标请求失败' }))
+        throw new Error(data.error || '对标请求失败')
+      }
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      let eventName = 'message'
+      let streamedText = ''
+      let receivedParsedResult = false
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const blocks = buffer.split('\n\n')
+        buffer = blocks.pop() || ''
+
+        for (const block of blocks) {
+          const lines = block.split('\n').filter(Boolean)
+          const eventLine = lines.find(line => line.startsWith('event: '))
+          const dataLine = lines.find(line => line.startsWith('data: '))
+          if (eventLine) eventName = eventLine.slice(7).trim()
+          if (!dataLine) continue
+
+          const data = JSON.parse(dataLine.slice(6))
+          if (eventName === 'status') {
+            if (data.status === 'preparing') setProgress('preparing')
+            if (data.status === 'analyzing') setProgress('analyzing')
+          }
+          if (eventName === 'progress') {
+            setProgress('analyzing')
+            if (typeof data.chunk === 'string') streamedText += data.chunk
+          }
+          if (eventName === 'result') {
+            setProgress('finalizing')
+            const parsed = parseBenchmarkReport(data.report)
+            if (parsed) {
+              receivedParsedResult = true
+              setBenchmarkResult(parsed)
+            }
+          }
+          if (eventName === 'error') {
+            throw new Error(String(data.message || '对标报告生成失败'))
+          }
+        }
+      }
+
+      if (!receivedParsedResult && streamedText) {
+        const parsed = parseBenchmarkReport(streamedText)
+        if (parsed) {
+          receivedParsedResult = true
+          setBenchmarkResult(parsed)
+        }
+      }
+
+      if (!receivedParsedResult) throw new Error('对标报告生成失败')
+      setProgress('done')
+      refreshHistory()
+    } catch (err) {
+      setProgress('error')
+      setError(err instanceof Error ? err.message : '对标报告生成失败')
     }
   }
 
@@ -500,7 +799,7 @@ export default function AgentPage() {
             <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-[0_24px_80px_-60px_rgba(24,24,27,0.5)]">
               <div className="flex items-center justify-between">
                 <h2 className="text-sm font-semibold tracking-tight text-zinc-950">分析条件</h2>
-                {(file || storagePath || result) && (
+                {(file || storagePath || result || benchmarkResult) && (
                   <button
                     onClick={resetWorkspace}
                     className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-800"
@@ -512,8 +811,23 @@ export default function AgentPage() {
               </div>
 
               <div className="mt-5 space-y-4">
+                <div className="grid grid-cols-2 rounded-xl bg-zinc-100 p-1">
+                  {(['analysis', 'benchmark'] as AgentMode[]).map(item => (
+                    <button
+                      key={item}
+                      type="button"
+                      onClick={() => switchMode(item)}
+                      className={`rounded-lg px-3 py-2 text-sm font-medium transition active:scale-[0.98] ${
+                        mode === item ? 'bg-white text-zinc-950 shadow-sm' : 'text-zinc-500 hover:text-zinc-900'
+                      }`}
+                    >
+                      {item === 'analysis' ? '投放分析' : '视频对标'}
+                    </button>
+                  ))}
+                </div>
+
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-zinc-800">视频素材</label>
+                  <label className="mb-2 block text-sm font-medium text-zinc-800">{mode === 'analysis' ? '视频素材' : '参考视频'}</label>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -551,22 +865,65 @@ export default function AgentPage() {
                   </button>
                 </div>
 
-                <div>
-                  <label htmlFor="targetAudience" className="mb-2 block text-sm font-medium text-zinc-800">目标用户</label>
-                  <div className="relative">
-                    <Target size={17} className="pointer-events-none absolute left-3 top-3 text-zinc-400" />
-                    <input
-                      id="targetAudience"
-                      value={targetAudience}
-                      onChange={e => setTargetAudience(e.target.value)}
-                      placeholder="例如：一线城市 25-35 岁新手妈妈"
-                      className="w-full rounded-xl border border-zinc-200 bg-zinc-50 py-2.5 pl-9 pr-3 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 focus:bg-white focus:ring-4 focus:ring-zinc-100"
-                    />
+                {mode === 'analysis' ? (
+                  <div>
+                    <label htmlFor="targetAudience" className="mb-2 block text-sm font-medium text-zinc-800">目标用户</label>
+                    <div className="relative">
+                      <Target size={17} className="pointer-events-none absolute left-3 top-3 text-zinc-400" />
+                      <input
+                        id="targetAudience"
+                        value={targetAudience}
+                        onChange={e => setTargetAudience(e.target.value)}
+                        placeholder="例如：一线城市 25-35 岁新手妈妈"
+                        className="w-full rounded-xl border border-zinc-200 bg-zinc-50 py-2.5 pl-9 pr-3 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 focus:bg-white focus:ring-4 focus:ring-zinc-100"
+                      />
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <>
+                    <div>
+                      <label htmlFor="ipPositioning" className="mb-2 block text-sm font-medium text-zinc-800">你的账号/IP定位</label>
+                      <div className="relative">
+                        <UserFocus size={17} className="pointer-events-none absolute left-3 top-3 text-zinc-400" />
+                        <input
+                          id="ipPositioning"
+                          value={ipPositioning}
+                          onChange={e => setIpPositioning(e.target.value)}
+                          placeholder="例如：创始人号、门店老板、母婴博主"
+                          className="w-full rounded-xl border border-zinc-200 bg-zinc-50 py-2.5 pl-9 pr-3 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 focus:bg-white focus:ring-4 focus:ring-zinc-100"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="productOrService" className="mb-2 block text-sm font-medium text-zinc-800">产品/服务（选填）</label>
+                      <input
+                        id="productOrService"
+                        value={productOrService}
+                        onChange={e => setProductOrService(e.target.value)}
+                        placeholder="例如：AI 视频分析工具、同城餐饮门店"
+                        className="w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 focus:bg-white focus:ring-4 focus:ring-zinc-100"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="targetCustomer" className="mb-2 block text-sm font-medium text-zinc-800">目标客户（选填）</label>
+                      <div className="relative">
+                        <Target size={17} className="pointer-events-none absolute left-3 top-3 text-zinc-400" />
+                        <input
+                          id="targetCustomer"
+                          value={targetCustomer}
+                          onChange={e => setTargetCustomer(e.target.value)}
+                          placeholder="例如：本地生活商家、准备装修的新婚家庭"
+                          className="w-full rounded-xl border border-zinc-200 bg-zinc-50 py-2.5 pl-9 pr-3 text-sm text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 focus:bg-white focus:ring-4 focus:ring-zinc-100"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-zinc-800">投放平台</label>
+                  <label className="mb-2 block text-sm font-medium text-zinc-800">{mode === 'analysis' ? '投放平台' : '发布平台'}</label>
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {PLATFORMS.map(item => (
                       <button
@@ -585,17 +942,31 @@ export default function AgentPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label htmlFor="context" className="mb-2 block text-sm font-medium text-zinc-800">补充背景</label>
-                  <textarea
-                    id="context"
-                    value={context}
-                    onChange={e => setContext(e.target.value)}
-                    rows={5}
-                    placeholder="补充产品卖点、品牌调性、预算限制、已有脚本、必须保留的镜头等信息。"
-                    className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm leading-6 text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 focus:bg-white focus:ring-4 focus:ring-zinc-100"
-                  />
-                </div>
+                {mode === 'analysis' ? (
+                  <div>
+                    <label htmlFor="context" className="mb-2 block text-sm font-medium text-zinc-800">补充背景</label>
+                    <textarea
+                      id="context"
+                      value={context}
+                      onChange={e => setContext(e.target.value)}
+                      rows={5}
+                      placeholder="补充产品卖点、品牌调性、预算限制、已有脚本、必须保留的镜头等信息。"
+                      className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm leading-6 text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 focus:bg-white focus:ring-4 focus:ring-zinc-100"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label htmlFor="benchmarkGoal" className="mb-2 block text-sm font-medium text-zinc-800">模仿目标/限制条件（选填）</label>
+                    <textarea
+                      id="benchmarkGoal"
+                      value={benchmarkGoal}
+                      onChange={e => setBenchmarkGoal(e.target.value)}
+                      rows={5}
+                      placeholder="例如：学习开头、改成同城获客、不能露脸、预算有限、保留品牌调性。"
+                      className="w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm leading-6 text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-zinc-400 focus:bg-white focus:ring-4 focus:ring-zinc-100"
+                    />
+                  </div>
+                )}
 
                 {error && (
                   <div className="flex items-start gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2.5 text-sm text-red-600">
@@ -605,12 +976,12 @@ export default function AgentPage() {
                 )}
 
                 <button
-                  onClick={handleAnalyze}
-                  disabled={!canAnalyze}
+                  onClick={mode === 'analysis' ? handleAnalyze : handleBenchmark}
+                  disabled={!canSubmit}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   {isWorking ? <Spinner size={17} weight="bold" className="animate-spin" /> : <CheckCircle size={17} weight="bold" />}
-                  点击分析
+                  {mode === 'analysis' ? '点击分析' : '生成对标报告'}
                 </button>
               </div>
             </div>
@@ -619,12 +990,16 @@ export default function AgentPage() {
           <section className="min-h-[520px] rounded-2xl border border-zinc-200 bg-white shadow-[0_24px_80px_-60px_rgba(24,24,27,0.5)]">
             <div className="flex items-center justify-between border-b border-zinc-200 px-5 py-4">
               <div>
-                <h2 className="text-sm font-semibold tracking-tight text-zinc-950">分析结果</h2>
+                <h2 className="text-sm font-semibold tracking-tight text-zinc-950">{mode === 'analysis' ? '分析结果' : '对标报告'}</h2>
                 <p className="mt-1 text-xs text-zinc-500">
-                  {activeAnalysis ? `创建于 ${new Date(activeAnalysis.created_at).toLocaleString('zh-CN')}` : '完成后会生成评分、逐场景修改和全局建议'}
+                  {activeAnalysis
+                    ? `创建于 ${new Date(activeAnalysis.created_at).toLocaleString('zh-CN')}`
+                    : mode === 'analysis'
+                      ? '完成后会生成评分、逐场景修改和全局建议'
+                      : '完成后会生成拆解、翻拍方案和拍摄清单'}
                 </p>
               </div>
-              {result && (
+              {mode === 'analysis' && result && (
                 <div className={`rounded-full bg-gradient-to-r ${tone.ring} to-zinc-200 p-[1px]`}>
                   <div className="rounded-full bg-white px-3 py-1.5 font-mono text-sm font-semibold text-zinc-900">
                     {result.score}/100
@@ -641,7 +1016,7 @@ export default function AgentPage() {
                       <Spinner size={18} weight="bold" className="animate-spin" />
                     </div>
                     <div>
-                      <p className="text-sm font-medium text-zinc-900">{progressCopy[progress]}</p>
+                      <p className="text-sm font-medium text-zinc-900">{currentProgressCopy}</p>
                       <p className="mt-1 text-xs text-zinc-500">视频越长，分析时间越久。当前页面保持打开即可。</p>
                     </div>
                   </div>
@@ -704,14 +1079,20 @@ export default function AgentPage() {
                   ))}
                 </ResultSection>
               </div>
+            ) : benchmarkResult ? (
+              <BenchmarkResultView result={benchmarkResult} />
             ) : (
               <div className="flex min-h-[450px] flex-col items-center justify-center px-8 text-center">
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-500">
                   <FilmSlate size={26} />
                 </div>
-                <h3 className="mt-5 text-base font-semibold tracking-tight text-zinc-900">等待分析条件</h3>
+                <h3 className="mt-5 text-base font-semibold tracking-tight text-zinc-900">
+                  {mode === 'analysis' ? '等待分析条件' : '等待对标条件'}
+                </h3>
                 <p className="mt-2 max-w-sm text-sm leading-6 text-zinc-500">
-                  上传视频，填写目标用户并选择投放平台。补充背景越具体，输出的修改动作越贴近投放场景。
+                  {mode === 'analysis'
+                    ? '上传视频，填写目标用户并选择投放平台。补充背景越具体，输出的修改动作越贴近投放场景。'
+                    : '上传参考视频，填写账号/IP定位和发布平台。补充业务背景后，报告会更贴近你的翻拍场景。'}
                 </p>
               </div>
             )}
@@ -745,6 +1126,130 @@ function ResultSection({
       <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3">
         {count > 0 ? children : <p className="py-4 text-center text-sm text-zinc-400">{empty}</p>}
       </div>
+    </div>
+  )
+}
+
+function BenchmarkResultView({ result }: { result: BenchmarkResult }) {
+  return (
+    <div className="space-y-7 p-5 md:p-6">
+      <div className="grid gap-4 lg:grid-cols-[180px_minmax(0,1fr)]">
+        <div className="rounded-2xl bg-zinc-950 p-5 text-white">
+          <p className="text-xs text-white/55">视频类型</p>
+          <p className="mt-4 text-2xl font-semibold tracking-tight">{result.contentType || '未识别'}</p>
+        </div>
+        <div className="rounded-2xl bg-zinc-50 p-5">
+          <p className="text-xs font-medium text-zinc-500">核心学习点</p>
+          <p className="mt-3 text-sm leading-7 text-zinc-700">{result.summary || '本次对标报告没有返回摘要。'}</p>
+          {result.coreMechanism && (
+            <p className="mt-3 border-t border-zinc-200 pt-3 text-sm leading-7 text-zinc-700">{result.coreMechanism}</p>
+          )}
+        </div>
+      </div>
+
+      <BenchmarkSection icon={TextAa} title="脚本设计">
+        <KeyValueList
+          rows={[
+            ['结构', result.scriptDesign.structure],
+            ['表达方式', result.scriptDesign.copyPatterns],
+            ['情绪节奏', result.scriptDesign.emotionalCurve],
+          ]}
+        />
+      </BenchmarkSection>
+
+      <BenchmarkSection icon={FilmSlate} title="画面与剪辑设计">
+        <KeyValueList
+          rows={[
+            ['画面风格', result.visualDesign.sceneStyle],
+            ['关键镜头', result.visualDesign.shotList],
+            ['剪辑节奏', result.visualDesign.editingRhythm],
+            ['字幕音频', result.visualDesign.subtitleAndAudio],
+          ]}
+        />
+      </BenchmarkSection>
+
+      <BenchmarkSection icon={Target} title="钩子与留人机制">
+        <KeyValueList
+          rows={[
+            ['前 3 秒钩子', result.hookDesign.openingHook],
+            ['中途留人点', result.hookDesign.retentionHooks],
+            ['最终 payoff', result.hookDesign.conversionOrPayoff],
+          ]}
+        />
+      </BenchmarkSection>
+
+      <BenchmarkSection icon={ArrowRight} title="结合自身需求的翻拍方案">
+        <KeyValueList
+          rows={[
+            ['翻拍角度', result.imitationPlan.adaptedAngle],
+            ['脚本大纲', result.imitationPlan.scriptOutline],
+            ['镜头建议', result.imitationPlan.shotInstructions],
+            ['台词字幕', result.imitationPlan.copyExamples],
+            ['不要照搬', result.imitationPlan.avoid],
+          ]}
+        />
+      </BenchmarkSection>
+
+      <BenchmarkSection icon={CheckCircle} title="拍摄检查清单">
+        <PlainList items={result.productionChecklist} empty="没有返回拍摄检查项" />
+      </BenchmarkSection>
+
+      <BenchmarkSection icon={Warning} title="风险与避坑">
+        <PlainList items={result.risks} empty="没有返回风险提示" />
+      </BenchmarkSection>
+    </div>
+  )
+}
+
+function BenchmarkSection({
+  icon: Icon,
+  title,
+  children,
+}: {
+  icon: typeof Eye
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <section>
+      <div className="mb-3 flex items-center gap-2">
+        <Icon size={16} className="text-zinc-400" />
+        <h3 className="text-sm font-semibold tracking-tight text-zinc-950">{title}</h3>
+      </div>
+      <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-3">
+        {children}
+      </div>
+    </section>
+  )
+}
+
+function KeyValueList({ rows }: { rows: [string, string | string[]][] }) {
+  const visibleRows = rows.filter(([, value]) => Array.isArray(value) ? value.length > 0 : Boolean(value))
+  if (visibleRows.length === 0) return <p className="py-4 text-center text-sm text-zinc-400">这一节没有返回可展示内容</p>
+
+  return (
+    <div className="divide-y divide-zinc-200">
+      {visibleRows.map(([label, value]) => (
+        <div key={label} className="grid gap-2 py-3 first:pt-0 last:pb-0 md:grid-cols-[96px_minmax(0,1fr)]">
+          <p className="text-xs font-medium text-zinc-500">{label}</p>
+          {Array.isArray(value) ? <PlainList items={value} /> : <p className="text-sm leading-6 text-zinc-700">{value}</p>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function PlainList({ items, empty }: { items: string[]; empty?: string }) {
+  if (items.length === 0) return <p className="py-1 text-sm text-zinc-400">{empty || '暂无内容'}</p>
+
+  return (
+    <div className="space-y-2">
+      {items.map((item, index) => (
+        <div key={`${item}-${index}`} className="flex gap-2">
+          <span className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-zinc-300" />
+          <p className="text-sm leading-6 text-zinc-700">{item}</p>
+        </div>
+      ))}
     </div>
   )
 }
