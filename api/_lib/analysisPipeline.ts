@@ -1,5 +1,6 @@
 import { buildAnalysisRequest, callMimoAPI, parseSSEStream } from './mimo'
 import { buildAnalysisPrompt } from './prompts'
+import { chargeAnalysisCredit, recordAnalysisFailure } from './credits'
 import { createAnalysis, getSignedUrl, getVideoDataUrl, updateAnalysis } from './supabase'
 import type { AnalysisReport, GlobalEdit, TimelineEdit } from './types'
 import { buildVideoProxyUrl } from './videoAccess'
@@ -194,7 +195,7 @@ export async function runAnalysisPipeline(input: AnalysisPipelineInput): Promise
 
     if (!fullResult) {
       const message = `Mimo did not return analysis content. Attempts: ${errors.join(' | ')}`
-      await updateAnalysis(analysis.id, { status: 'failed' })
+      await recordAnalysisFailure(analysis.id, new Error(message))
       throw new Error(message)
     }
 
@@ -207,10 +208,11 @@ export async function runAnalysisPipeline(input: AnalysisPipelineInput): Promise
       raw_result: rawResult,
       completed_at: new Date().toISOString(),
     })
+    await chargeAnalysisCredit(analysis.id)
 
     return { analysisId: analysis.id, report, rawResult, sourceMode, errors }
   } catch (err) {
-    if (analysisId) await updateAnalysis(analysisId, { status: 'failed' }).catch(() => {})
+    if (analysisId) await recordAnalysisFailure(analysisId, err).catch(() => {})
     throw err
   }
 }

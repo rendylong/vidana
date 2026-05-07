@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { verifyAuth } from './_lib/auth'
 import { runBenchmarkPipeline } from './_lib/benchmarkPipeline'
+import { assertUserHasCredits } from './_lib/credits'
 
 function sendSSE(res: VercelResponse, event: string, data: Record<string, unknown>) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
@@ -65,6 +66,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (!trimmedPlatform) {
     sendSSE(res, 'error', { message: '请选择发布平台' })
+    return res.end()
+  }
+
+  try {
+    await assertUserHasCredits(auth.userId)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '可用分析次数不足，请联系管理员增加额度。'
+    sendSSE(res, 'error', { message })
     return res.end()
   }
 

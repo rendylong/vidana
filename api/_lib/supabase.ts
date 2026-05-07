@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { grantInitialCredits } from './credits'
 import type { User, Analysis, AnalysisType } from './types'
 
 let _supabase: SupabaseClient | null = null
@@ -62,6 +63,7 @@ export async function findOrCreateUser(feishuId: string, name: string, avatarUrl
   }
   const { data, error } = await supabase.from('users').insert({ feishu_id: feishuId, name, avatar_url: avatarUrl }).select().single()
   if (error || !data) throw new Error(`Failed to create user: ${error?.message || 'empty response'}`)
+  await grantInitialCredits(data.id)
   return data as User
 }
 

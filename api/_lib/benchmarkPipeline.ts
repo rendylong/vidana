@@ -1,5 +1,6 @@
 import { buildAnalysisRequest, callMimoAPI, parseSSEStream } from './mimo'
 import { buildBenchmarkPrompt } from './prompts'
+import { chargeAnalysisCredit, recordAnalysisFailure } from './credits'
 import { createAnalysis, getSignedUrl, getVideoDataUrl, updateAnalysis } from './supabase'
 import type { BenchmarkReport } from './types'
 import { buildVideoProxyUrl } from './videoAccess'
@@ -228,7 +229,7 @@ export async function runBenchmarkPipeline(input: BenchmarkPipelineInput): Promi
 
     if (!fullResult) {
       const message = `Mimo did not return benchmark content. Attempts: ${errors.join(' | ')}`
-      await updateAnalysis(analysis.id, { status: 'failed' })
+      await recordAnalysisFailure(analysis.id, new Error(message))
       throw new Error(message)
     }
 
@@ -241,10 +242,11 @@ export async function runBenchmarkPipeline(input: BenchmarkPipelineInput): Promi
       raw_result: rawResult,
       completed_at: new Date().toISOString(),
     })
+    await chargeAnalysisCredit(analysis.id)
 
     return { analysisId: analysis.id, report, rawResult, sourceMode, errors }
   } catch (err) {
-    if (analysisId) await updateAnalysis(analysisId, { status: 'failed' }).catch(() => {})
+    if (analysisId) await recordAnalysisFailure(analysisId, err).catch(() => {})
     throw err
   }
 }

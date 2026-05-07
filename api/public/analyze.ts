@@ -3,6 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import Busboy from 'busboy'
 import { verifyBearerApiKey } from '../_lib/apiKeys'
 import { runAnalysisPipeline } from '../_lib/analysisPipeline'
+import { assertUserHasCredits } from '../_lib/credits'
 import { formatAnalysisMarkdown } from '../_lib/markdown'
 import { getSupabase } from '../_lib/supabase'
 
@@ -221,6 +222,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const authorization = normalizeHeader(req.headers.authorization)
   const auth = await verifyBearerApiKey(authorization)
   if (!auth) return res.status(401).json({ error: 'Invalid or missing Vidana API key' })
+
+  try {
+    await assertUserHasCredits(auth.userId)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '可用分析次数不足，请联系管理员增加额度。'
+    return res.status(402).json({ error: message })
+  }
 
   let payload: MultipartPayload
   try {

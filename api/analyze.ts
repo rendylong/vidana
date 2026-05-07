@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { verifyAuth } from './_lib/auth'
 import { runAnalysisPipeline } from './_lib/analysisPipeline'
+import { assertUserHasCredits } from './_lib/credits'
 
 function sendSSE(res: VercelResponse, event: string, data: Record<string, unknown>) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
@@ -31,6 +32,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (!storagePath) return res.status(400).json({ error: 'storagePath is required' })
+
+  try {
+    await assertUserHasCredits(auth.userId)
+  } catch (err) {
+    const message = err instanceof Error ? err.message : '可用分析次数不足，请联系管理员增加额度。'
+    return res.status(402).json({ error: message })
+  }
 
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')

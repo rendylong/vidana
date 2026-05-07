@@ -4,9 +4,11 @@ import handler from '../../api/benchmark'
 const {
   verifyAuthMock,
   runBenchmarkPipelineMock,
+  assertUserHasCreditsMock,
 } = vi.hoisted(() => ({
   verifyAuthMock: vi.fn(),
   runBenchmarkPipelineMock: vi.fn(),
+  assertUserHasCreditsMock: vi.fn(),
 }))
 
 vi.mock('../../api/_lib/auth', () => ({
@@ -15,6 +17,10 @@ vi.mock('../../api/_lib/auth', () => ({
 
 vi.mock('../../api/_lib/benchmarkPipeline', () => ({
   runBenchmarkPipeline: runBenchmarkPipelineMock,
+}))
+
+vi.mock('../../api/_lib/credits', () => ({
+  assertUserHasCredits: assertUserHasCreditsMock,
 }))
 
 function createResponse() {
@@ -70,6 +76,8 @@ describe('benchmark API', () => {
   beforeEach(() => {
     verifyAuthMock.mockReset()
     runBenchmarkPipelineMock.mockReset()
+    assertUserHasCreditsMock.mockReset()
+    assertUserHasCreditsMock.mockResolvedValue(undefined)
     delete process.env.VIDANA_PUBLIC_ORIGIN
     delete process.env.VITE_APP_URL
   })
@@ -117,6 +125,23 @@ describe('benchmark API', () => {
     })
     expect(sseData(response.body, 'error')).toEqual([{ message }])
     expect(runBenchmarkPipelineMock).not.toHaveBeenCalled()
+    expect(response.ended).toBe(true)
+  })
+
+  it('emits error SSE before pipeline when user has no credits', async () => {
+    verifyAuthMock.mockReturnValue({ userId: 'user-1' })
+    assertUserHasCreditsMock.mockRejectedValue(new Error('可用分析次数不足，请联系管理员增加额度。'))
+    const response = createResponse()
+
+    await handler(createPost({
+      storagePath: 'videos/ref.mp4',
+      ipPositioning: '创始人 IP',
+      platform: '抖音',
+    }) as never, response.res as never)
+
+    expect(assertUserHasCreditsMock).toHaveBeenCalledWith('user-1')
+    expect(runBenchmarkPipelineMock).not.toHaveBeenCalled()
+    expect(sseData(response.body, 'error')).toEqual([{ message: '可用分析次数不足，请联系管理员增加额度。' }])
     expect(response.ended).toBe(true)
   })
 
