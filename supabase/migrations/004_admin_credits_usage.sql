@@ -17,6 +17,8 @@ CREATE INDEX IF NOT EXISTS idx_credit_transactions_user_id
 CREATE INDEX IF NOT EXISTS idx_credit_transactions_analysis_id
   ON credit_transactions(analysis_id);
 
+ALTER TABLE credit_transactions ENABLE ROW LEVEL SECURITY;
+
 ALTER TABLE analyses
 ADD COLUMN IF NOT EXISTS input_tokens integer NOT NULL DEFAULT 0,
 ADD COLUMN IF NOT EXISTS output_tokens integer NOT NULL DEFAULT 0,
