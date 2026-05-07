@@ -49,12 +49,26 @@ export default function AdminUserDetailPage() {
   const submit = async (event: FormEvent) => {
     event.preventDefault()
     setAdjustError('')
+
+    const nextDelta = Number(delta)
+    const trimmedReason = reason.trim()
+
+    if (!Number.isFinite(nextDelta) || !Number.isInteger(nextDelta) || nextDelta === 0) {
+      setAdjustError('调整数量必须是非零整数。')
+      return
+    }
+
+    if (!trimmedReason) {
+      setAdjustError('请填写调整原因。')
+      return
+    }
+
     setSaving(true)
 
     try {
       await adminFetch(`/users/${id}/credits`, {
         method: 'POST',
-        body: JSON.stringify({ delta: Number(delta), reason }),
+        body: JSON.stringify({ delta: nextDelta, reason: trimmedReason }),
       })
       setReason('')
       await load()

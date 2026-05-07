@@ -21,19 +21,29 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    let active = true
+
     setError('')
     setLoading(true)
     adminFetch<UsersResponse>(`/users?q=${encodeURIComponent(q)}`)
       .then(result => {
+        if (!active) return
         setUsers(result.data)
         setCount(result.count)
       })
       .catch(err => {
+        if (!active) return
         setUsers([])
         setCount(0)
         setError(err instanceof Error ? err.message : '用户列表加载失败')
       })
-      .finally(() => setLoading(false))
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+
+    return () => {
+      active = false
+    }
   }, [q])
 
   return (
