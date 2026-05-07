@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import type { User, Analysis } from './types'
+import type { User, Analysis, AnalysisType } from './types'
 
 let _supabase: SupabaseClient | null = null
 
@@ -66,12 +66,13 @@ export async function findOrCreateUser(feishuId: string, name: string, avatarUrl
 }
 
 export async function createAnalysis(userId: string, videoUrl: string, opts: {
-  targetAudience?: string; platform?: string; context?: string
+  targetAudience?: string; platform?: string; context?: string; analysisType?: AnalysisType
 }): Promise<Analysis> {
   const supabase = getSupabase()
   const { data } = await supabase.from('analyses').insert({
     user_id: userId, video_url: videoUrl,
     target_audience: opts.targetAudience || null, platform: opts.platform || null, context: opts.context || null,
+    analysis_type: opts.analysisType || 'analysis',
     status: 'pending',
   }).select().single()
   return data as Analysis
