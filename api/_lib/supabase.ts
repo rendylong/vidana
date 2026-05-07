@@ -69,12 +69,13 @@ export async function createAnalysis(userId: string, videoUrl: string, opts: {
   targetAudience?: string; platform?: string; context?: string; analysisType?: AnalysisType
 }): Promise<Analysis> {
   const supabase = getSupabase()
-  const { data } = await supabase.from('analyses').insert({
+  const { data, error } = await supabase.from('analyses').insert({
     user_id: userId, video_url: videoUrl,
     target_audience: opts.targetAudience || null, platform: opts.platform || null, context: opts.context || null,
     analysis_type: opts.analysisType || 'analysis',
     status: 'pending',
   }).select().single()
+  if (error || !data) throw new Error(`Failed to create analysis: ${error?.message || 'empty response'}`)
   return data as Analysis
 }
 

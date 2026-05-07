@@ -1,5 +1,13 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { getSupabaseServerConfig, SupabaseServiceRoleKeyError } from '../../../api/_lib/supabase'
+
+const supabaseMocks = vi.hoisted(() => ({
+  createClient: vi.fn(),
+}))
+
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: supabaseMocks.createClient,
+}))
 
 function fakeSupabaseJwt(role: string): string {
   const payload = Buffer.from(JSON.stringify({ role, ref: 'project-ref' })).toString('base64url')
@@ -39,5 +47,68 @@ describe('Supabase server config', () => {
       VITE_SUPABASE_URL: 'https://project.supabase.co',
       SUPABASE_SERVICE_ROLE_KEY: 'sb_publishable_123456789',
     } as NodeJS.ProcessEnv)).toThrow('publishable key')
+  })
+})
+
+describe('createAnalysis', () => {
+  afterEach(() => {
+    vi.resetModules()
+    vi.unstubAllEnvs()
+    supabaseMocks.createClient.mockReset()
+  })
+
+  it('inserts the default analysis type', async () => {
+    const insert = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: { id: 'analysis-1' },
+          error: null,
+        }),
+      }),
+    })
+
+    supabaseMocks.createClient.mockReturnValue({
+      from: vi.fn(() => ({ insert })),
+    })
+
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co')
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', fakeSupabaseJwt('service_role'))
+
+    const { createAnalysis } = await import('../../../api/_lib/supabase')
+    await createAnalysis('user-1', 'https://example.com/video.mp4', {})
+
+    expect(insert).toHaveBeenCalledWith({
+      user_id: 'user-1',
+      video_url: 'https://example.com/video.mp4',
+      target_audience: null,
+      platform: null,
+      context: null,
+      analysis_type: 'analysis',
+      status: 'pending',
+    })
+  })
+
+  it('throws when analysis creation fails', async () => {
+    supabaseMocks.createClient.mockReturnValue({
+      from: vi.fn(() => ({
+        insert: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            single: vi.fn().mockResolvedValue({
+              data: null,
+              error: { message: 'column analysis_type does not exist' },
+            }),
+          }),
+        }),
+      })),
+    })
+
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co')
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', fakeSupabaseJwt('service_role'))
+
+    const { createAnalysis } = await import('../../../api/_lib/supabase')
+
+    await expect(createAnalysis('user-1', 'https://example.com/video.mp4', {})).rejects.toThrow(
+      'Failed to create analysis: column analysis_type does not exist',
+    )
   })
 })
