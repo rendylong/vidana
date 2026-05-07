@@ -24,6 +24,9 @@ const [
   { default: feishuAuthHandler },
   { default: authCallbackHandler },
   { default: authMeHandler },
+  { default: adminLoginHandler },
+  { default: adminLogoutHandler },
+  { default: adminMeHandler },
   { default: historyHandler },
   { default: historyByIdHandler },
   { default: publicAnalyzeHandler },
@@ -37,6 +40,9 @@ const [
   import('../api/auth/feishu'),
   import('../api/auth/callback'),
   import('../api/auth/me'),
+  import('../api/admin/login'),
+  import('../api/admin/logout'),
+  import('../api/admin/me'),
   import('../api/history'),
   import('../api/history/[id]'),
   import('../api/public/analyze'),
@@ -82,6 +88,10 @@ app.head('/api/video', adapt(videoHandler as VercelStyleHandler))
 app.get('/api/auth/feishu', adapt(feishuAuthHandler as VercelStyleHandler))
 app.get('/api/auth/callback', adapt(authCallbackHandler as VercelStyleHandler))
 app.get('/api/auth/me', adapt(authMeHandler as VercelStyleHandler))
+
+app.post('/api/admin/login', adapt(adminLoginHandler as VercelStyleHandler))
+app.post('/api/admin/logout', adapt(adminLogoutHandler as VercelStyleHandler))
+app.get('/api/admin/me', adapt(adminMeHandler as VercelStyleHandler))
 
 app.get('/api/history', adapt(historyHandler as VercelStyleHandler))
 app.get('/api/history/:id', (req, _res, next) => {
