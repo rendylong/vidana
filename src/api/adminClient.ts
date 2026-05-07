@@ -1,14 +1,21 @@
 const ADMIN_API_BASE = '/api/admin'
 
-export async function adminFetch<T>(path: string, options?: RequestInit): Promise<T> {
+interface AdminFetchOptions extends RequestInit {
+  redirectOnUnauthorized?: boolean
+}
+
+export async function adminFetch<T>(path: string, options?: AdminFetchOptions): Promise<T> {
+  const { redirectOnUnauthorized = true, ...fetchOptions } = options || {}
   const res = await fetch(`${ADMIN_API_BASE}${path}`, {
-    ...options,
+    ...fetchOptions,
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    headers: { 'Content-Type': 'application/json', ...fetchOptions.headers },
   })
 
   if (res.status === 401) {
-    window.location.href = '/admin/login'
+    if (redirectOnUnauthorized) {
+      window.location.href = '/admin/login'
+    }
     throw new Error('Unauthorized')
   }
 
@@ -24,6 +31,7 @@ export function adminLogin(password: string) {
   return adminFetch<{ authenticated: true }>('/login', {
     method: 'POST',
     body: JSON.stringify({ password }),
+    redirectOnUnauthorized: false,
   })
 }
 
