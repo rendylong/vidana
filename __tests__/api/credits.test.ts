@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const { supabaseMock } = vi.hoisted(() => ({
   supabaseMock: {
     from: vi.fn(),
+    rpc: vi.fn(),
   },
 }))
 
@@ -24,6 +25,7 @@ function tableMock(result: unknown = { data: null, error: null }) {
 describe('credits service', () => {
   beforeEach(() => {
     supabaseMock.from.mockReset()
+    supabaseMock.rpc.mockReset()
   })
 
   it('allows users with positive credits', async () => {
@@ -44,7 +46,7 @@ describe('credits service', () => {
     const chain = tableMock({ data: null, error: null })
     supabaseMock.from.mockReturnValue(chain)
 
-    await grantInitialCredits('user-1')
+    await grantInitialCredits(supabaseMock as never, 'user-1')
 
     expect(supabaseMock.from).toHaveBeenCalledWith('credit_transactions')
     expect(chain.insert).toHaveBeenCalledWith({
@@ -55,39 +57,21 @@ describe('credits service', () => {
     })
   })
 
-  it('charges a completed analysis only when not already charged', async () => {
-    const analysisChain = tableMock({ data: { user_id: 'user-1', credit_charged_at: null }, error: null })
-    const userChain = tableMock({ data: { analysis_credits: 3 }, error: null })
-    const updateUserChain = tableMock({ data: null, error: null })
-    const transactionChain = tableMock({ data: null, error: null })
-    const updateAnalysisChain = tableMock({ data: null, error: null })
-    supabaseMock.from
-      .mockReturnValueOnce(analysisChain)
-      .mockReturnValueOnce(userChain)
-      .mockReturnValueOnce(updateUserChain)
-      .mockReturnValueOnce(transactionChain)
-      .mockReturnValueOnce(updateAnalysisChain)
+  it('charges a completed analysis with the database RPC', async () => {
+    supabaseMock.rpc.mockResolvedValue({ data: true, error: null })
 
     await chargeAnalysisCredit('analysis-1')
 
-    expect(updateUserChain.update).toHaveBeenCalledWith({ analysis_credits: 2 })
-    expect(transactionChain.insert).toHaveBeenCalledWith({
-      user_id: 'user-1',
-      delta: -1,
-      source: 'analysis_success',
-      analysis_id: 'analysis-1',
-      reason: '分析成功扣减',
-    })
-    expect(updateAnalysisChain.update).toHaveBeenCalledWith(expect.objectContaining({ credit_charged_at: expect.any(String) }))
+    expect(supabaseMock.rpc).toHaveBeenCalledWith('charge_analysis_credit', { p_analysis_id: 'analysis-1' })
   })
 
-  it('skips already charged analyses', async () => {
-    const analysisChain = tableMock({ data: { user_id: 'user-1', credit_charged_at: '2026-05-07T00:00:00.000Z' }, error: null })
-    supabaseMock.from.mockReturnValueOnce(analysisChain)
+  it('maps RPC insufficient credit errors', async () => {
+    supabaseMock.rpc.mockResolvedValue({
+      data: null,
+      error: { message: '可用分析次数不足，请联系管理员增加额度。' },
+    })
 
-    await chargeAnalysisCredit('analysis-1')
-
-    expect(supabaseMock.from).toHaveBeenCalledTimes(1)
+    await expect(chargeAnalysisCredit('analysis-1')).rejects.toThrow('可用分析次数不足')
   })
 
   it('records failed analysis errors', async () => {

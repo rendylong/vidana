@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { verifyAuth } from './_lib/auth'
 import { runAnalysisPipeline } from './_lib/analysisPipeline'
-import { assertUserHasCredits } from './_lib/credits'
+import { assertUserHasCredits, InsufficientCreditsError } from './_lib/credits'
 
 function sendSSE(res: VercelResponse, event: string, data: Record<string, unknown>) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
@@ -36,8 +36,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     await assertUserHasCredits(auth.userId)
   } catch (err) {
-    const message = err instanceof Error ? err.message : '可用分析次数不足，请联系管理员增加额度。'
-    return res.status(402).json({ error: message })
+    if (err instanceof InsufficientCreditsError) {
+      return res.status(402).json({ error: err.message })
+    }
+    console.error('Credit check error:', err)
+    return res.status(500).json({ error: '分析次数检查失败，请稍后重试' })
   }
 
   res.setHeader('Content-Type', 'text/event-stream')

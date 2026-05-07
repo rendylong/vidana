@@ -9,6 +9,8 @@ const {
   supabaseUploadMock,
   runAnalysisPipelineMock,
   formatAnalysisMarkdownMock,
+  assertUserHasCreditsMock,
+  InsufficientCreditsErrorMock,
 } = vi.hoisted(() => {
   const supabaseUploadMock = vi.fn()
   const supabaseFromMock = vi.fn(() => ({ upload: supabaseUploadMock }))
@@ -23,6 +25,12 @@ const {
     supabaseUploadMock,
     runAnalysisPipelineMock: vi.fn(),
     formatAnalysisMarkdownMock: vi.fn(),
+    assertUserHasCreditsMock: vi.fn(),
+    InsufficientCreditsErrorMock: class InsufficientCreditsError extends Error {
+      constructor() {
+        super('可用分析次数不足，请联系管理员增加额度。')
+      }
+    },
   }
 })
 
@@ -40,6 +48,11 @@ vi.mock('../../../api/_lib/analysisPipeline', () => ({
 
 vi.mock('../../../api/_lib/markdown', () => ({
   formatAnalysisMarkdown: formatAnalysisMarkdownMock,
+}))
+
+vi.mock('../../../api/_lib/credits', () => ({
+  assertUserHasCredits: assertUserHasCreditsMock,
+  InsufficientCreditsError: InsufficientCreditsErrorMock,
 }))
 
 function createResponse() {
@@ -124,6 +137,8 @@ describe('public analyze API', () => {
     supabaseUploadMock.mockReset()
     runAnalysisPipelineMock.mockReset()
     formatAnalysisMarkdownMock.mockReset()
+    assertUserHasCreditsMock.mockReset()
+    assertUserHasCreditsMock.mockResolvedValue(undefined)
   })
 
   it('rejects missing API key', async () => {
@@ -174,6 +189,28 @@ describe('public analyze API', () => {
 
     expect(response.statusCode).toBe(400)
     expect(response.jsonBody).toEqual({ error: 'multipart/form-data required' })
+  })
+
+  it('rejects valid auth without credits before parsing multipart', async () => {
+    verifyBearerApiKeyMock.mockResolvedValue({ userId: 'user-1' })
+    assertUserHasCreditsMock.mockRejectedValue(new InsufficientCreditsErrorMock())
+    const response = createResponse()
+    const pipeMock = vi.fn()
+
+    await handler({
+      method: 'POST',
+      headers: {
+        authorization: 'Bearer valid-key',
+        'content-type': 'multipart/form-data; boundary=----vidana-test-boundary',
+        'content-length': '100',
+      },
+      pipe: pipeMock,
+    } as never, response.res as never)
+
+    expect(response.statusCode).toBe(402)
+    expect(response.jsonBody).toEqual({ error: '可用分析次数不足，请联系管理员增加额度。' })
+    expect(pipeMock).not.toHaveBeenCalled()
+    expect(runAnalysisPipelineMock).not.toHaveBeenCalled()
   })
 
   it('rejects unsupported extension and mime multipart uploads', async () => {

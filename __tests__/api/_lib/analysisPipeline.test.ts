@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   getSignedUrl: vi.fn(async () => 'https://signed.example/video.mp4'),
   getVideoDataUrl: vi.fn(async () => 'data:video/mp4;base64,abc'),
   updateAnalysis: vi.fn(async () => {}),
+  chargeAnalysisCredit: vi.fn(async () => {}),
+  recordAnalysisFailure: vi.fn(async () => {}),
   buildVideoProxyUrl: vi.fn((origin: string, path: string) => {
     const url = new URL('/api/video', origin)
     url.searchParams.set('path', path)
@@ -40,6 +42,11 @@ vi.mock('../../../api/_lib/supabase', () => ({
 
 vi.mock('../../../api/_lib/videoAccess', () => ({
   buildVideoProxyUrl: mocks.buildVideoProxyUrl,
+}))
+
+vi.mock('../../../api/_lib/credits', () => ({
+  chargeAnalysisCredit: mocks.chargeAnalysisCredit,
+  recordAnalysisFailure: mocks.recordAnalysisFailure,
 }))
 
 const validReport = {
@@ -84,6 +91,8 @@ beforeEach(() => {
   mocks.getSignedUrl.mockClear()
   mocks.getVideoDataUrl.mockClear()
   mocks.updateAnalysis.mockClear()
+  mocks.chargeAnalysisCredit.mockClear()
+  mocks.recordAnalysisFailure.mockClear()
   mocks.buildVideoProxyUrl.mockClear()
 })
 
@@ -166,6 +175,7 @@ describe('runAnalysisPipeline', () => {
         sourceMode: 'signed-url',
       }),
     }))
+    expect(mocks.chargeAnalysisCredit).toHaveBeenCalledWith('analysis-1')
     expect(output.report).toEqual({
       score: 88,
       summary: '整体节奏清晰。',
@@ -208,6 +218,6 @@ describe('runAnalysisPipeline', () => {
 
     await expect(runAnalysisPipeline(pipelineInput())).rejects.toThrow('Mimo did not return analysis content')
 
-    expect(mocks.updateAnalysis).toHaveBeenCalledWith('analysis-1', { status: 'failed' })
+    expect(mocks.recordAnalysisFailure).toHaveBeenCalledWith('analysis-1', expect.any(Error))
   })
 })

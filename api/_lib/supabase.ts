@@ -1,5 +1,4 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
-import { grantInitialCredits } from './credits'
 import type { User, Analysis, AnalysisType } from './types'
 
 let _supabase: SupabaseClient | null = null
@@ -49,6 +48,16 @@ export function getSupabase(): SupabaseClient {
   return _supabase
 }
 
+async function grantInitialCredits(supabase: SupabaseClient, userId: string): Promise<void> {
+  const { error } = await supabase.from('credit_transactions').insert({
+    user_id: userId,
+    delta: 10,
+    source: 'initial_grant',
+    reason: '新用户初始额度',
+  })
+  if (error) throw new Error(`Failed to grant initial credits: ${error.message}`)
+}
+
 export async function findOrCreateUser(feishuId: string, name: string, avatarUrl: string): Promise<User> {
   const supabase = getSupabase()
   const { data: existing, error: existingError } = await supabase.from('users').select('*').eq('feishu_id', feishuId).maybeSingle()
@@ -63,7 +72,7 @@ export async function findOrCreateUser(feishuId: string, name: string, avatarUrl
   }
   const { data, error } = await supabase.from('users').insert({ feishu_id: feishuId, name, avatar_url: avatarUrl }).select().single()
   if (error || !data) throw new Error(`Failed to create user: ${error?.message || 'empty response'}`)
-  await grantInitialCredits(data.id)
+  await grantInitialCredits(supabase, data.id)
   return data as User
 }
 

@@ -5,10 +5,16 @@ const {
   verifyAuthMock,
   runBenchmarkPipelineMock,
   assertUserHasCreditsMock,
+  InsufficientCreditsErrorMock,
 } = vi.hoisted(() => ({
   verifyAuthMock: vi.fn(),
   runBenchmarkPipelineMock: vi.fn(),
   assertUserHasCreditsMock: vi.fn(),
+  InsufficientCreditsErrorMock: class InsufficientCreditsError extends Error {
+    constructor() {
+      super('可用分析次数不足，请联系管理员增加额度。')
+    }
+  },
 }))
 
 vi.mock('../../api/_lib/auth', () => ({
@@ -21,6 +27,7 @@ vi.mock('../../api/_lib/benchmarkPipeline', () => ({
 
 vi.mock('../../api/_lib/credits', () => ({
   assertUserHasCredits: assertUserHasCreditsMock,
+  InsufficientCreditsError: InsufficientCreditsErrorMock,
 }))
 
 function createResponse() {
@@ -130,7 +137,7 @@ describe('benchmark API', () => {
 
   it('emits error SSE before pipeline when user has no credits', async () => {
     verifyAuthMock.mockReturnValue({ userId: 'user-1' })
-    assertUserHasCreditsMock.mockRejectedValue(new Error('可用分析次数不足，请联系管理员增加额度。'))
+    assertUserHasCreditsMock.mockRejectedValue(new InsufficientCreditsErrorMock())
     const response = createResponse()
 
     await handler(createPost({

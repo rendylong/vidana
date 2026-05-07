@@ -3,7 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import Busboy from 'busboy'
 import { verifyBearerApiKey } from '../_lib/apiKeys'
 import { runAnalysisPipeline } from '../_lib/analysisPipeline'
-import { assertUserHasCredits } from '../_lib/credits'
+import { assertUserHasCredits, InsufficientCreditsError } from '../_lib/credits'
 import { formatAnalysisMarkdown } from '../_lib/markdown'
 import { getSupabase } from '../_lib/supabase'
 
@@ -226,8 +226,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     await assertUserHasCredits(auth.userId)
   } catch (err) {
-    const message = err instanceof Error ? err.message : '可用分析次数不足，请联系管理员增加额度。'
-    return res.status(402).json({ error: message })
+    if (err instanceof InsufficientCreditsError) {
+      return res.status(402).json({ error: err.message })
+    }
+    console.error('Public credit check error:', err)
+    return res.status(500).json({ error: 'Analysis credit check failed' })
   }
 
   let payload: MultipartPayload

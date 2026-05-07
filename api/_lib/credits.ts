@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { getSupabase } from './supabase'
 
 export class InsufficientCreditsError extends Error {
@@ -17,8 +18,7 @@ export async function assertUserHasCredits(userId: string): Promise<void> {
   if (Number(data.analysis_credits) <= 0) throw new InsufficientCreditsError()
 }
 
-export async function grantInitialCredits(userId: string): Promise<void> {
-  const supabase = getSupabase()
+export async function grantInitialCredits(supabase: SupabaseClient, userId: string): Promise<void> {
   const { error } = await supabase.from('credit_transactions').insert({
     user_id: userId,
     delta: 10,
@@ -30,41 +30,10 @@ export async function grantInitialCredits(userId: string): Promise<void> {
 
 export async function chargeAnalysisCredit(analysisId: string): Promise<void> {
   const supabase = getSupabase()
-  const { data: analysis, error: analysisError } = await supabase
-    .from('analyses')
-    .select('user_id, credit_charged_at')
-    .eq('id', analysisId)
-    .single()
-  if (analysisError || !analysis) throw new Error(`Failed to load analysis for credit charge: ${analysisError?.message || 'empty response'}`)
-  if (analysis.credit_charged_at) return
-
-  const { data: user, error: userError } = await supabase
-    .from('users')
-    .select('analysis_credits')
-    .eq('id', analysis.user_id)
-    .single()
-  if (userError || !user) throw new Error(`Failed to load user credits: ${userError?.message || 'empty response'}`)
-
-  const nextCredits = Number(user.analysis_credits) - 1
-  if (nextCredits < 0) throw new InsufficientCreditsError()
-
-  const { error: updateUserError } = await supabase.from('users').update({ analysis_credits: nextCredits }).eq('id', analysis.user_id)
-  if (updateUserError) throw new Error(`Failed to deduct user credit: ${updateUserError.message}`)
-
-  const { error: transactionError } = await supabase.from('credit_transactions').insert({
-    user_id: analysis.user_id,
-    delta: -1,
-    source: 'analysis_success',
-    analysis_id: analysisId,
-    reason: '分析成功扣减',
-  })
-  if (transactionError) throw new Error(`Failed to write credit transaction: ${transactionError.message}`)
-
-  const { error: updateAnalysisError } = await supabase
-    .from('analyses')
-    .update({ credit_charged_at: new Date().toISOString() })
-    .eq('id', analysisId)
-  if (updateAnalysisError) throw new Error(`Failed to mark analysis credit charged: ${updateAnalysisError.message}`)
+  const { error } = await supabase.rpc('charge_analysis_credit', { p_analysis_id: analysisId })
+  if (!error) return
+  if (error.message.includes('可用分析次数不足')) throw new InsufficientCreditsError()
+  throw new Error(`Failed to charge analysis credit: ${error.message}`)
 }
 
 export async function recordAnalysisFailure(analysisId: string, err: unknown): Promise<void> {

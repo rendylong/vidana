@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   getSignedUrl: vi.fn(async () => 'https://signed.example/video.mp4'),
   getVideoDataUrl: vi.fn(async () => 'data:video/mp4;base64,abc'),
   updateAnalysis: vi.fn(async () => {}),
+  chargeAnalysisCredit: vi.fn(async () => {}),
+  recordAnalysisFailure: vi.fn(async () => {}),
   buildVideoProxyUrl: vi.fn((origin: string, path: string) => {
     const url = new URL('/api/video', origin)
     url.searchParams.set('path', path)
@@ -40,6 +42,11 @@ vi.mock('../../../api/_lib/supabase', () => ({
 
 vi.mock('../../../api/_lib/videoAccess', () => ({
   buildVideoProxyUrl: mocks.buildVideoProxyUrl,
+}))
+
+vi.mock('../../../api/_lib/credits', () => ({
+  chargeAnalysisCredit: mocks.chargeAnalysisCredit,
+  recordAnalysisFailure: mocks.recordAnalysisFailure,
 }))
 
 const validBenchmarkReport = {
@@ -94,6 +101,8 @@ beforeEach(() => {
   mocks.getSignedUrl.mockClear()
   mocks.getVideoDataUrl.mockClear()
   mocks.updateAnalysis.mockClear()
+  mocks.chargeAnalysisCredit.mockClear()
+  mocks.recordAnalysisFailure.mockClear()
   mocks.buildVideoProxyUrl.mockClear()
 })
 
@@ -192,6 +201,7 @@ describe('runBenchmarkPipeline', () => {
         sourceMode: 'signed-url',
       }),
     }))
+    expect(mocks.chargeAnalysisCredit).toHaveBeenCalledWith('benchmark-1')
     expect(output.report).not.toHaveProperty('score')
     expect(output.sourceMode).toBe('signed-url')
   })
@@ -250,6 +260,6 @@ describe('runBenchmarkPipeline', () => {
 
     await expect(runBenchmarkPipeline(pipelineInput())).rejects.toThrow('Mimo did not return benchmark content')
 
-    expect(mocks.updateAnalysis).toHaveBeenCalledWith('benchmark-1', { status: 'failed' })
+    expect(mocks.recordAnalysisFailure).toHaveBeenCalledWith('benchmark-1', expect.any(Error))
   })
 })
