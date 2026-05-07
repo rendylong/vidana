@@ -8,15 +8,9 @@ import CliPage from './pages/CliPage'
 import HistoryPage from './pages/HistoryPage'
 import AdminLoginPage from './pages/AdminLoginPage'
 import AdminDashboardPage from './pages/AdminDashboardPage'
-
-function AdminPlaceholder({ title }: { title: string }) {
-  return (
-    <div className="rounded-lg border border-zinc-200 bg-white p-5">
-      <p className="text-sm font-medium text-zinc-900">{title}</p>
-      <p className="mt-2 text-sm text-zinc-500">后续任务会接入完整数据和操作能力。</p>
-    </div>
-  )
-}
+import AdminUsersPage from './pages/AdminUsersPage'
+import AdminUserDetailPage from './pages/AdminUserDetailPage'
+import AdminAnalysisDetailPage from './pages/AdminAnalysisDetailPage'
 
 export default function App() {
   return (
@@ -26,8 +20,9 @@ export default function App() {
           <Route path="/admin/login" element={<AdminLoginPage />} />
           <Route element={<AdminLayout />}>
             <Route path="/admin" element={<AdminDashboardPage />} />
-            <Route path="/admin/users" element={<AdminPlaceholder title="用户管理即将启用" />} />
-            <Route path="/admin/analyses/:id" element={<AdminPlaceholder title="分析详情即将启用" />} />
+            <Route path="/admin/users" element={<AdminUsersPage />} />
+            <Route path="/admin/users/:id" element={<AdminUserDetailPage />} />
+            <Route path="/admin/analyses/:id" element={<AdminAnalysisDetailPage />} />
           </Route>
           <Route element={<Layout />}>
             <Route path="/" element={<AgentPage />} />
