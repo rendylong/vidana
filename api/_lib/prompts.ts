@@ -5,11 +5,37 @@ interface PromptOptions {
 }
 
 export function buildAnalysisPrompt(opts: PromptOptions): string {
-  let prompt = `请从以下维度详细分析这段视频素材：\n\n1. **画面质量**：清晰度、光线运用、色彩表现\n2. **构图与镜头**：构图是否合理、镜头运动是否流畅\n3. **剪辑节奏**：剪辑节奏是否恰当、转场是否自然\n4. **音频质量**：背景音、配音、音效是否协调\n5. **叙事结构**：内容是否有清晰的起承转合\n6. **整体观感**：视觉冲击力、情感传达、专业度`
-  if (opts.targetAudience) prompt += `\n\n目标受众：${opts.targetAudience}\n请评估视频对目标受众的吸引力和适配度。`
-  if (opts.platform) prompt += `\n\n发布平台：${opts.platform}\n请给出该平台的适配建议（如画面比例、时长、节奏等）。`
-  if (opts.context) prompt += `\n\n补充背景信息：${opts.context}\n请结合这些信息分析视频是否有效传达了核心卖点或信息。`
-  prompt += '\n\n请以 JSON 格式输出分析结果，包含各维度的评分和详细说明。'
+  let prompt = `你是一位资深视频制作总监，正在审查一段视频素材。
+
+【审查背景】`
+
+  const backgrounds: string[] = []
+  if (opts.targetAudience) backgrounds.push(`目标人群：${opts.targetAudience}`)
+  if (opts.platform) backgrounds.push(`发布平台：${opts.platform}`)
+  if (opts.context) backgrounds.push(`补充信息：${opts.context}`)
+  if (backgrounds.length) {
+    prompt += '\n' + backgrounds.join('\n')
+  } else {
+    prompt += '\n无特别指定，请按通用标准审查。'
+  }
+
+  prompt += `
+
+【审查要求】
+1. 结合上述背景来评判 — 同一个问题面对不同人群和平台，严重程度和修改优先级可能不同
+2. 按时间线逐场景/逐镜头分析，每条意见必须标注精确时间戳（MM:SS 格式）
+3. 关注以下维度：画面质量、色调统一、转场剪辑、字幕文案、人物表现、音频配音、素材质量
+4. 每条给出明确操作指令（去掉/替换/调整/统一等具体动作）
+5. 最后给出与背景匹配的宏观建议
+
+输出严格 JSON，不要加 markdown 代码块标记，不要加任何额外文字，只输出纯 JSON：
+{"score":<0-100整数>,"summary":"<结合背景，评价视频在目标人群和平台上的预期效果，200字以内>","timelineEdits":[{"timestamp":"<MM:SS>","issue":"<具体问题>","action":"<明确操作指令>","category":"<视觉|剪辑|字幕|音频|人物|素材>","severity":"<high|medium|low>"}],"globalEdits":[{"issue":"<具体问题>","action":"<明确操作指令>","category":"<视觉|剪辑|字幕|音频|人物|素材>","severity":"<high|medium|low>"}],"suggestions":["<宏观建议1>","<宏观建议2>"]}
+
+注意：
+- timelineEdits 是带时间戳的逐条修改，globalEdits 是影响整个视频的问题
+- suggestions 是与背景匹配的宏观建议，如素材替换方向、风格调整方向等
+- 所有 JSON key 必须用双引号包裹，不要省略任何字段`
+
   return prompt
 }
 
