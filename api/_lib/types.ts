@@ -6,9 +6,12 @@ export interface User {
   created_at: string
 }
 
+export type AnalysisType = 'analysis' | 'benchmark'
+
 export interface Analysis {
   id: string
   user_id: string
+  analysis_type: AnalysisType
   video_url: string
   video_duration: number | null
   target_audience: string | null
@@ -43,6 +46,45 @@ export interface AnalysisReport {
   timelineEdits: TimelineEdit[]
   globalEdits: GlobalEdit[]
   suggestions: string[]
+}
+
+export interface BenchmarkPromptOptions {
+  ipPositioning: string
+  platform: string
+  productOrService?: string
+  targetCustomer?: string
+  benchmarkGoal?: string
+}
+
+export interface BenchmarkReport {
+  contentType: string
+  summary: string
+  coreMechanism: string
+  scriptDesign: {
+    structure: string[]
+    copyPatterns: string[]
+    emotionalCurve: string
+  }
+  visualDesign: {
+    sceneStyle: string
+    shotList: string[]
+    editingRhythm: string
+    subtitleAndAudio: string
+  }
+  hookDesign: {
+    openingHook: string
+    retentionHooks: string[]
+    conversionOrPayoff: string
+  }
+  imitationPlan: {
+    adaptedAngle: string
+    scriptOutline: string[]
+    shotInstructions: string[]
+    copyExamples: string[]
+    avoid: string[]
+  }
+  productionChecklist: string[]
+  risks: string[]
 }
 
 export interface AnalyzeRequest {

@@ -7,9 +7,12 @@ export interface User {
 export type Platform = '抖音' | 'B站' | '小红书' | '微信视频号' | '快手' | 'YouTube'
 export const PLATFORMS: Platform[] = ['抖音', 'B站', '小红书', '微信视频号', '快手', 'YouTube']
 
+export type AnalysisType = 'analysis' | 'benchmark'
+
 export interface Analysis {
   id: string
   user_id: string
+  analysis_type?: AnalysisType
   video_url: string
   video_duration: number | null
   target_audience: string | null
