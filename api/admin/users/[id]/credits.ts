@@ -3,13 +3,10 @@ import { verifyAdminRequest } from '../../../_lib/adminAuth'
 import { adjustUserCredits } from '../../../_lib/adminData'
 
 const clientErrorMessages = new Set([
-  '用户不存在',
-  '额度调整数量必须是非零整数',
-  'Credit delta must be a nonzero integer.',
-  '备注不能为空',
-  'Credit adjustment reason is required.',
-  '调整后余额不能小于 0',
-  'User credits cannot be negative',
+  '用户不存在。',
+  '调整额度必须是非零整数。',
+  '请填写调整原因。',
+  '用户额度不能小于 0。',
 ])
 
 function queryValue(value: unknown): string {

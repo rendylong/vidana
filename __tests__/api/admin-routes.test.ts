@@ -107,7 +107,7 @@ describe('admin routes', () => {
 
   it('maps known credit validation errors to 400', async () => {
     verifyAdminRequestMock.mockReturnValue({ admin: true })
-    adjustUserCreditsMock.mockRejectedValue(new Error('Credit delta must be a nonzero integer.'))
+    adjustUserCreditsMock.mockRejectedValue(new Error('用户额度不能小于 0。'))
     const response = createResponse()
 
     await userCreditsHandler({
@@ -117,7 +117,7 @@ describe('admin routes', () => {
     } as never, response.res as never)
 
     expect(response.statusCode).toBe(400)
-    expect(response.jsonBody).toEqual({ error: 'Credit delta must be a nonzero integer.' })
+    expect(response.jsonBody).toEqual({ error: '用户额度不能小于 0。' })
   })
 
   it('maps unexpected credit errors to 500', async () => {
