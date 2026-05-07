@@ -20,7 +20,7 @@ export interface Analysis {
   status: 'pending' | 'analyzing' | 'completed' | 'failed'
   score: number | null
   raw_result: Record<string, unknown> | null
-  report: AnalysisReport | null
+  report: AnalysisReport | BenchmarkReport | null
   created_at: string
   completed_at: string | null
 }
