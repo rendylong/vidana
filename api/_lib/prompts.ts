@@ -12,3 +12,41 @@ export function buildAnalysisPrompt(opts: PromptOptions): string {
   prompt += '\n\n请以 JSON 格式输出分析结果，包含各维度的评分和详细说明。'
   return prompt
 }
+
+interface BenchmarkPromptOptions {
+  ipPositioning: string
+  platform: string
+  productOrService?: string
+  targetCustomer?: string
+  benchmarkGoal?: string
+}
+
+export function buildBenchmarkPrompt(opts: BenchmarkPromptOptions): string {
+  const backgrounds = [
+    `账号/IP定位：${opts.ipPositioning}`,
+    `发布平台：${opts.platform}`,
+  ]
+  if (opts.productOrService) backgrounds.push(`产品/服务：${opts.productOrService}`)
+  if (opts.targetCustomer) backgrounds.push(`目标客户：${opts.targetCustomer}`)
+  if (opts.benchmarkGoal) backgrounds.push(`模仿目标/限制条件：${opts.benchmarkGoal}`)
+
+  return `你是一位资深视频内容分析师和短视频翻拍策划。
+
+【用户背景】
+${backgrounds.join('\n')}
+
+【任务】
+请分析用户上传的参考视频。先判断参考视频类型，再按该类型拆解它为什么有效，并给出适合用户自身账号/IP定位和发布平台的翻拍方案。
+
+注意：
+1. 视频类型可能是投流广告、口播种草、搞笑段子、科普、vlog、测评、品牌片或其他类型。
+2. 不要把所有视频都套成投流广告，也不要强行加入产品转化逻辑。
+3. 产品/服务和目标客户没有提供时，按账号/IP定位和平台给出内容模仿建议。
+4. 输出重点是可执行翻拍方案，不做视频质量评分，不输出 score 或模仿分数。
+5. 避免鼓励逐字照抄、盗用素材、侵犯版权或冒充原作者。
+
+输出严格 JSON，不要加 markdown 代码块标记，不要加任何额外文字，只输出纯 JSON：
+{"contentType":"<口播种草|投流广告|搞笑段子|科普|vlog|测评|品牌片|其他>","summary":"<这个视频最值得学习的地方>","coreMechanism":"<它为什么有效>","scriptDesign":{"structure":["<开头如何抓人>","<中段如何推进>","<结尾如何收束>"],"copyPatterns":["<可复用的表达方式>"],"emotionalCurve":"<情绪或信息节奏>"},"visualDesign":{"sceneStyle":"<画面风格>","shotList":["<关键镜头和作用>"],"editingRhythm":"<剪辑节奏>","subtitleAndAudio":"<字幕、音频、配乐设计>"},"hookDesign":{"openingHook":"<前3秒钩子>","retentionHooks":["<中途留人点>"],"conversionOrPayoff":"<转化、关注、笑点或知识payoff>"},"imitationPlan":{"adaptedAngle":"<结合用户背景后的翻拍角度>","scriptOutline":["<可执行脚本大纲>"],"shotInstructions":["<镜头翻拍建议>"],"copyExamples":["<示例台词或字幕>"],"avoid":["<不要照搬或不适合模仿的点>"]},"productionChecklist":["<拍摄前检查项>"],"risks":["<版权、风格错配、平台适配等风险>"]}
+
+所有 JSON key 必须用双引号包裹，不要省略任何字段。`
+}
