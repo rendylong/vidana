@@ -11,6 +11,8 @@ import type {
 
 const DAY_MS = 24 * 60 * 60 * 1000
 const SHANGHAI_OFFSET_MS = 8 * 60 * 60 * 1000
+const DEFAULT_PAGE_SIZE = 20
+const MAX_PAGE_SIZE = 50
 
 interface RangeWindow {
   currentStart: Date
@@ -21,12 +23,6 @@ interface RangeWindow {
 
 interface AnalysisWithUser extends Analysis {
   users?: { name?: string | null } | { name?: string | null }[] | null
-}
-
-interface AnalysisAggregateRow {
-  user_id: string
-  status: Analysis['status']
-  created_at: string
 }
 
 interface AdminDashboard {
@@ -46,6 +42,22 @@ interface AdminUserDetail {
     count: number
     totalPages: number
   }
+}
+
+interface PaginationWindow {
+  page: number
+  pageSize: number
+  from: number
+  to: number
+}
+
+interface AnalysisLatestRow {
+  created_at: string
+}
+
+interface AdjustCreditsRpcResponse {
+  analysis_credits: number
+  transaction: CreditTransaction
 }
 
 function ensureRange(range: AdminRange): AdminRange {
@@ -105,6 +117,33 @@ function throwIfError(action: string, error: { message?: string } | null | undef
   if (error) throw new Error(`${action}: ${error.message || 'unknown error'}`)
 }
 
+function friendlyCreditAdjustmentError(error: { message?: string } | null | undefined): Error {
+  const message = error?.message || '调整额度失败，请稍后重试。'
+  if (message.includes('Credit delta must be a nonzero integer') || message.includes('p_delta must be a nonzero integer')) {
+    return new Error('调整额度必须是非零整数。')
+  }
+  if (message.includes('Credit adjustment reason is required') || message.includes('p_reason is required')) {
+    return new Error('请填写调整原因。')
+  }
+  if (message.includes('User not found')) return new Error('用户不存在。')
+  if (message.includes('User credits cannot be negative')) return new Error('用户额度不能小于 0。')
+  return new Error(`调整额度失败：${message}`)
+}
+
+export function getPaginationWindow(page = 1, pageSize = DEFAULT_PAGE_SIZE): PaginationWindow {
+  const normalizedPage = Number.isFinite(page) ? Math.floor(page) : 1
+  const normalizedPageSize = Number.isFinite(pageSize) ? Math.floor(pageSize) : DEFAULT_PAGE_SIZE
+  const safePage = Math.max(1, normalizedPage)
+  const safePageSize = Math.min(MAX_PAGE_SIZE, Math.max(1, normalizedPageSize))
+  const from = (safePage - 1) * safePageSize
+  return {
+    page: safePage,
+    pageSize: safePageSize,
+    from,
+    to: from + safePageSize - 1,
+  }
+}
+
 export function getRangeWindow(range: AdminRange, now = new Date()): RangeWindow {
   if (range === 'today') {
     const currentStart = getShanghaiDayStart(now)
@@ -161,6 +200,34 @@ async function analysisSummaries(query: unknown): Promise<AdminAnalysisSummary[]
   return (data || []).map(mapAnalysisSummary)
 }
 
+async function getUserAnalysisAggregate(userId: string): Promise<Omit<AdminUserListItem, 'id' | 'name' | 'avatar_url' | 'created_at' | 'analysis_credits'>> {
+  const supabase = getSupabase()
+  const [
+    totalResult,
+    completedResult,
+    failedResult,
+    latestResult,
+  ] = await Promise.all([
+    supabase.from('analyses').select('id', { count: 'exact', head: true }).eq('user_id', userId),
+    supabase.from('analyses').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'completed'),
+    supabase.from('analyses').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('status', 'failed'),
+    supabase.from('analyses').select('created_at').eq('user_id', userId).order('created_at', { ascending: false }).limit(1),
+  ])
+
+  throwIfError('Failed to count user analyses', totalResult.error)
+  throwIfError('Failed to count completed user analyses', completedResult.error)
+  throwIfError('Failed to count failed user analyses', failedResult.error)
+  throwIfError('Failed to get latest user analysis', latestResult.error)
+
+  const latest = ((latestResult.data || []) as AnalysisLatestRow[])[0]
+  return {
+    total_analyses: totalResult.count ?? 0,
+    completed_analyses: completedResult.count ?? 0,
+    failed_analyses: failedResult.count ?? 0,
+    last_analysis_at: latest?.created_at ?? null,
+  }
+}
+
 async function userAnalysisAggregates(userIds: string[]): Promise<Map<string, Omit<AdminUserListItem, 'id' | 'name' | 'avatar_url' | 'created_at' | 'analysis_credits'>>> {
   const aggregates = new Map<string, {
     total_analyses: number
@@ -178,23 +245,8 @@ async function userAnalysisAggregates(userIds: string[]): Promise<Map<string, Om
   })
   if (userIds.length === 0) return aggregates
 
-  const supabase = getSupabase()
-  const { data, error } = await supabase
-    .from('analyses')
-    .select('user_id, status, created_at')
-    .in('user_id', userIds)
-  throwIfError('Failed to aggregate user analyses', error)
-
-  for (const row of (data || []) as AnalysisAggregateRow[]) {
-    const aggregate = aggregates.get(row.user_id)
-    if (!aggregate) continue
-    aggregate.total_analyses += 1
-    if (row.status === 'completed') aggregate.completed_analyses += 1
-    if (row.status === 'failed') aggregate.failed_analyses += 1
-    if (!aggregate.last_analysis_at || row.created_at > aggregate.last_analysis_at) {
-      aggregate.last_analysis_at = row.created_at
-    }
-  }
+  const rows = await Promise.all(userIds.map(async (userId) => [userId, await getUserAnalysisAggregate(userId)] as const))
+  rows.forEach(([userId, aggregate]) => aggregates.set(userId, aggregate))
 
   return aggregates
 }
@@ -282,10 +334,7 @@ export async function getAdminDashboard(range: AdminRange): Promise<AdminDashboa
 
 export async function listAdminUsers(page = 1, q = '', pageSize = 20): Promise<{ data: AdminUserListItem[]; count: number }> {
   const supabase = getSupabase()
-  const safePage = Math.max(1, Math.floor(page))
-  const safePageSize = Math.max(1, Math.floor(pageSize))
-  const from = (safePage - 1) * safePageSize
-  const to = from + safePageSize - 1
+  const pagination = getPaginationWindow(page, pageSize)
   const search = q.trim()
 
   let countQuery = supabase.from('users').select('id', { count: 'exact', head: true })
@@ -293,7 +342,7 @@ export async function listAdminUsers(page = 1, q = '', pageSize = 20): Promise<{
     .from('users')
     .select('id, feishu_id, name, avatar_url, analysis_credits, created_at')
     .order('created_at', { ascending: false })
-    .range(from, to)
+    .range(pagination.from, pagination.to)
 
   if (search) {
     countQuery = countQuery.ilike('name', `%${search}%`)
@@ -327,10 +376,7 @@ export async function listAdminUsers(page = 1, q = '', pageSize = 20): Promise<{
 
 export async function getAdminUserDetail(userId: string, page = 1, pageSize = 20): Promise<AdminUserDetail | null> {
   const supabase = getSupabase()
-  const safePage = Math.max(1, Math.floor(page))
-  const safePageSize = Math.max(1, Math.floor(pageSize))
-  const from = (safePage - 1) * safePageSize
-  const to = from + safePageSize - 1
+  const pagination = getPaginationWindow(page, pageSize)
 
   const { data: user, error: userError } = await supabase
     .from('users')
@@ -362,7 +408,7 @@ export async function getAdminUserDetail(userId: string, page = 1, pageSize = 20
       .select('id, user_id, analysis_type, status, score, platform, total_tokens, error_message, created_at, completed_at, users(name)')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .range(from, to),
+      .range(pagination.from, pagination.to),
   ])
 
   throwIfError('Failed to list credit transactions', transactionsResult.error)
@@ -375,10 +421,10 @@ export async function getAdminUserDetail(userId: string, page = 1, pageSize = 20
     creditTransactions: (transactionsResult.data || []) as CreditTransaction[],
     analyses: ((analysesResult.data || []) as AnalysisWithUser[]).map(mapAnalysisSummary),
     pagination: {
-      page: safePage,
-      pageSize: safePageSize,
+      page: pagination.page,
+      pageSize: pagination.pageSize,
       count,
-      totalPages: Math.ceil(count / safePageSize),
+      totalPages: Math.ceil(count / pagination.pageSize),
     },
   }
 }
@@ -393,42 +439,19 @@ export async function adjustUserCredits(
   if (!trimmedReason) throw new Error('Credit adjustment reason is required.')
 
   const supabase = getSupabase()
-  const { data: user, error: userError } = await supabase
-    .from('users')
-    .select('id, analysis_credits')
-    .eq('id', userId)
-    .maybeSingle()
-  throwIfError('Failed to get user credits', userError)
-  if (!user) throw new Error('User not found.')
+  const { data, error } = await supabase.rpc('adjust_user_credits', {
+    p_user_id: userId,
+    p_delta: delta,
+    p_reason: trimmedReason,
+  })
+  if (error) throw friendlyCreditAdjustmentError(error)
+  if (!data) throw new Error('调整额度失败：数据库没有返回结果。')
 
-  const nextCredits = Number((user as Pick<User, 'analysis_credits'>).analysis_credits || 0) + delta
-  if (nextCredits < 0) throw new Error('User credits cannot be negative.')
-
-  const { data: updatedUser, error: updateError } = await supabase
-    .from('users')
-    .update({ analysis_credits: nextCredits })
-    .eq('id', userId)
-    .select('analysis_credits')
-    .single()
-  throwIfError('Failed to update user credits', updateError)
-  if (!updatedUser) throw new Error('Failed to update user credits: empty response')
-
-  const { data: transaction, error: transactionError } = await supabase
-    .from('credit_transactions')
-    .insert({
-      user_id: userId,
-      delta,
-      reason: trimmedReason,
-      source: 'admin_adjustment',
-    })
-    .select()
-    .single()
-  throwIfError('Failed to insert credit transaction', transactionError)
-  if (!transaction) throw new Error('Failed to insert credit transaction: empty response')
+  const result = data as AdjustCreditsRpcResponse
 
   return {
-    analysis_credits: Number((updatedUser as Pick<User, 'analysis_credits'>).analysis_credits || 0),
-    transaction: transaction as CreditTransaction,
+    analysis_credits: Number(result.analysis_credits || 0),
+    transaction: result.transaction,
   }
 }
 

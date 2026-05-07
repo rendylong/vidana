@@ -82,3 +82,57 @@ BEGIN
   RETURN true;
 END;
 $$;
+
+CREATE OR REPLACE FUNCTION adjust_user_credits(
+  p_user_id uuid,
+  p_delta integer,
+  p_reason text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_current_credits integer;
+  v_next_credits integer;
+  v_transaction credit_transactions%ROWTYPE;
+BEGIN
+  IF p_delta IS NULL OR p_delta = 0 THEN
+    RAISE EXCEPTION 'p_delta must be a nonzero integer';
+  END IF;
+
+  IF p_reason IS NULL OR length(trim(p_reason)) = 0 THEN
+    RAISE EXCEPTION 'p_reason is required';
+  END IF;
+
+  SELECT analysis_credits
+  INTO v_current_credits
+  FROM users
+  WHERE id = p_user_id
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'User not found';
+  END IF;
+
+  v_next_credits := v_current_credits + p_delta;
+
+  IF v_next_credits < 0 THEN
+    RAISE EXCEPTION 'User credits cannot be negative';
+  END IF;
+
+  UPDATE users
+  SET analysis_credits = v_next_credits
+  WHERE id = p_user_id;
+
+  INSERT INTO credit_transactions (user_id, delta, source, reason)
+  VALUES (p_user_id, p_delta, 'admin_adjustment', trim(p_reason))
+  RETURNING * INTO v_transaction;
+
+  RETURN jsonb_build_object(
+    'analysis_credits', v_next_credits,
+    'transaction', to_jsonb(v_transaction)
+  );
+END;
+$$;
