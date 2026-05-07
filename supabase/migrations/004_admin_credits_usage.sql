@@ -83,6 +83,11 @@ BEGIN
 END;
 $$;
 
+REVOKE EXECUTE ON FUNCTION charge_analysis_credit(uuid) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION charge_analysis_credit(uuid) FROM anon;
+REVOKE EXECUTE ON FUNCTION charge_analysis_credit(uuid) FROM authenticated;
+GRANT EXECUTE ON FUNCTION charge_analysis_credit(uuid) TO service_role;
+
 CREATE OR REPLACE FUNCTION adjust_user_credits(
   p_user_id uuid,
   p_delta integer,
@@ -136,3 +141,8 @@ BEGIN
   );
 END;
 $$;
+
+REVOKE EXECUTE ON FUNCTION adjust_user_credits(uuid, integer, text) FROM PUBLIC;
+REVOKE EXECUTE ON FUNCTION adjust_user_credits(uuid, integer, text) FROM anon;
+REVOKE EXECUTE ON FUNCTION adjust_user_credits(uuid, integer, text) FROM authenticated;
+GRANT EXECUTE ON FUNCTION adjust_user_credits(uuid, integer, text) TO service_role;
