@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import dashboardHandler from '../../api/admin/dashboard'
 import userByIdHandler from '../../api/admin/users/[id]'
 import userCreditsHandler from '../../api/admin/users/[id]/credits'
-import analysisByIdHandler from '../../api/admin/analyses/[id]'
 
 const {
   verifyAdminRequestMock,
