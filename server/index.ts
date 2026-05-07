@@ -27,6 +27,11 @@ const [
   { default: adminLoginHandler },
   { default: adminLogoutHandler },
   { default: adminMeHandler },
+  { default: adminDashboardHandler },
+  { default: adminUsersHandler },
+  { default: adminUserByIdHandler },
+  { default: adminUserCreditsHandler },
+  { default: adminAnalysisByIdHandler },
   { default: historyHandler },
   { default: historyByIdHandler },
   { default: publicAnalyzeHandler },
@@ -43,6 +48,11 @@ const [
   import('../api/admin/login'),
   import('../api/admin/logout'),
   import('../api/admin/me'),
+  import('../api/admin/dashboard'),
+  import('../api/admin/users'),
+  import('../api/admin/users/[id]'),
+  import('../api/admin/users/[id]/credits'),
+  import('../api/admin/analyses/[id]'),
   import('../api/history'),
   import('../api/history/[id]'),
   import('../api/public/analyze'),
@@ -77,6 +87,16 @@ function noBuffer(_req: Request, res: Response, next: NextFunction) {
   next()
 }
 
+function withQueryParam(name: string): express.RequestHandler {
+  return (req, _res, next) => {
+    Object.defineProperty(req, 'query', {
+      value: { ...req.query, [name]: req.params[name] },
+      configurable: true,
+    })
+    next()
+  }
+}
+
 app.use('/api', apiJsonBody)
 
 app.post('/api/analyze', noBuffer, adapt(analyzeHandler as VercelStyleHandler))
@@ -92,31 +112,21 @@ app.get('/api/auth/me', adapt(authMeHandler as VercelStyleHandler))
 app.post('/api/admin/login', adapt(adminLoginHandler as VercelStyleHandler))
 app.post('/api/admin/logout', adapt(adminLogoutHandler as VercelStyleHandler))
 app.get('/api/admin/me', adapt(adminMeHandler as VercelStyleHandler))
+app.get('/api/admin/dashboard', adapt(adminDashboardHandler as VercelStyleHandler))
+app.get('/api/admin/users', adapt(adminUsersHandler as VercelStyleHandler))
+app.get('/api/admin/users/:id', withQueryParam('id'), adapt(adminUserByIdHandler as VercelStyleHandler))
+app.post('/api/admin/users/:id/credits', withQueryParam('id'), adapt(adminUserCreditsHandler as VercelStyleHandler))
+app.get('/api/admin/analyses/:id', withQueryParam('id'), adapt(adminAnalysisByIdHandler as VercelStyleHandler))
 
 app.get('/api/history', adapt(historyHandler as VercelStyleHandler))
-app.get('/api/history/:id', (req, _res, next) => {
-  req.query.id = req.params.id
-  next()
-}, adapt(historyByIdHandler as VercelStyleHandler))
-app.delete('/api/history/:id', (req, _res, next) => {
-  req.query.id = req.params.id
-  next()
-}, adapt(historyByIdHandler as VercelStyleHandler))
+app.get('/api/history/:id', withQueryParam('id'), adapt(historyByIdHandler as VercelStyleHandler))
+app.delete('/api/history/:id', withQueryParam('id'), adapt(historyByIdHandler as VercelStyleHandler))
 
 app.get('/api/api-keys', adapt(apiKeysHandler as VercelStyleHandler))
 app.post('/api/api-keys', adapt(apiKeysHandler as VercelStyleHandler))
-app.put('/api/api-keys/:id', (req, _res, next) => {
-  req.query.id = req.params.id
-  next()
-}, adapt(apiKeyByIdHandler as VercelStyleHandler))
-app.patch('/api/api-keys/:id', (req, _res, next) => {
-  req.query.id = req.params.id
-  next()
-}, adapt(apiKeyByIdHandler as VercelStyleHandler))
-app.delete('/api/api-keys/:id', (req, _res, next) => {
-  req.query.id = req.params.id
-  next()
-}, adapt(apiKeyByIdHandler as VercelStyleHandler))
+app.put('/api/api-keys/:id', withQueryParam('id'), adapt(apiKeyByIdHandler as VercelStyleHandler))
+app.patch('/api/api-keys/:id', withQueryParam('id'), adapt(apiKeyByIdHandler as VercelStyleHandler))
+app.delete('/api/api-keys/:id', withQueryParam('id'), adapt(apiKeyByIdHandler as VercelStyleHandler))
 
 app.post('/api/public/analyze', noBuffer, adapt(publicAnalyzeHandler as VercelStyleHandler))
 
@@ -131,7 +141,7 @@ if (fs.existsSync(distDir)) {
   })
 } else {
   app.use((_req, res) => {
-    res.status(503).send('Vidana frontend is not built. Run npm run build before starting the production server.')
+    res.status(503).send('Ovidly frontend is not built. Run npm run build before starting the production server.')
   })
 }
 
@@ -142,5 +152,5 @@ app.use((error: unknown, _req: Request, res: Response, next: NextFunction) => {
 })
 
 app.listen(port, host, () => {
-  console.log(`Vidana server listening on http://${host}:${port}`)
+  console.log(`Ovidly server listening on http://${host}:${port}`)
 })
