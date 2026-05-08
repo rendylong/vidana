@@ -7,6 +7,7 @@ import { claimAnalysisForProcessing, getAnalysisById, updateAnalysis } from '../
 import type { Analysis } from '../api/_lib/types'
 
 const DEFAULT_BLOCK_MS = 5_000
+const DEFAULT_PENDING_IDLE_MS = 60_000
 const DEFAULT_CONSUMER_PREFIX = 'analysis-worker'
 
 type StreamFields = string[]
@@ -16,6 +17,7 @@ type StreamResponse = Array<[string, StreamMessage[]]> | null
 export interface ProcessOneBatchOptions {
   consumerName?: string
   blockMs?: number
+  pendingIdleMs?: number
 }
 
 export interface ProcessOneBatchResult {
@@ -24,6 +26,15 @@ export interface ProcessOneBatchResult {
 
 function consumerName(): string {
   return `${DEFAULT_CONSUMER_PREFIX}-${process.pid}`
+}
+
+function publicOrigin(): string | null {
+  return process.env.VIDANA_PUBLIC_ORIGIN || process.env.VITE_APP_URL || null
+}
+
+function pendingIdleMs(): number {
+  const parsed = Number.parseInt(process.env.ANALYSIS_PENDING_IDLE_MS || '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PENDING_IDLE_MS
 }
 
 export function parseFields(fields: StreamFields): Record<string, string> {
@@ -55,6 +66,21 @@ async function retryAnalysis(analysis: Analysis, err: unknown, nextAttempt: numb
   const nextRetryAt = new Date(Date.now() + delayMs).toISOString()
   const message = errorMessage(err)
 
+  try {
+    await enqueueAnalysisAfter({
+      analysisId: analysis.id,
+      userId: analysis.user_id,
+      queuedAt: queuedAtFor(analysis),
+    }, delayMs)
+  } catch (scheduleError) {
+    await failAnalysis(
+      analysis,
+      new Error(`Retry scheduling failed: ${errorMessage(scheduleError)}; original error: ${message}`),
+      nextAttempt,
+    )
+    return
+  }
+
   await updateAnalysis(analysis.id, {
     status: 'queued',
     attempt_count: nextAttempt,
@@ -64,12 +90,6 @@ async function retryAnalysis(analysis: Analysis, err: unknown, nextAttempt: numb
     locked_at: null,
     started_at: null,
   })
-
-  await enqueueAnalysisAfter({
-    analysisId: analysis.id,
-    userId: analysis.user_id,
-    queuedAt: queuedAtFor(analysis),
-  }, delayMs)
 }
 
 async function failAnalysis(analysis: Analysis, err: unknown, nextAttempt: number): Promise<void> {
@@ -83,7 +103,7 @@ async function failAnalysis(analysis: Analysis, err: unknown, nextAttempt: numbe
   })
 }
 
-async function handleMessage(messageId: string, fields: StreamFields, workerId: string): Promise<void> {
+async function handleMessage(messageId: string, fields: StreamFields, workerId: string, fromPending = false): Promise<void> {
   const payload = parseFields(fields)
   const analysisId = payload.analysisId
   if (!analysisId) {
@@ -97,8 +117,19 @@ async function handleMessage(messageId: string, fields: StreamFields, workerId: 
     return
   }
 
-  const claimed = await claimAnalysisForProcessing(analysis.id, workerId)
-  if (!claimed) {
+  if (fromPending && analysis.status === 'processing') {
+    await updateAnalysis(analysis.id, {
+      status: 'processing',
+      locked_by: workerId,
+      locked_at: new Date().toISOString(),
+    })
+  } else if (analysis.status === 'queued') {
+    const claimed = await claimAnalysisForProcessing(analysis.id, workerId)
+    if (!claimed) {
+      await ack(messageId)
+      return
+    }
+  } else {
     await ack(messageId)
     return
   }
@@ -111,6 +142,7 @@ async function handleMessage(messageId: string, fields: StreamFields, workerId: 
       targetAudience: analysis.target_audience || undefined,
       platform: analysis.platform || undefined,
       context: analysis.context || undefined,
+      origin: publicOrigin(),
       lockedBy: workerId,
     })
   } catch (err) {
@@ -123,6 +155,26 @@ async function handleMessage(messageId: string, fields: StreamFields, workerId: 
   }
 
   await ack(messageId)
+}
+
+async function processPendingBatch(workerId: string, minIdleMs: number): Promise<boolean> {
+  const redis = getBlockingRedis()
+  const names = queueNames()
+  const response = await redis.xautoclaim(
+    names.stream,
+    names.group,
+    workerId,
+    minIdleMs,
+    '0-0',
+    'COUNT',
+    1,
+  ) as [string, StreamMessage[]]
+
+  const message = response?.[1]?.[0]
+  if (!message) return false
+
+  await handleMessage(message[0], message[1], workerId, true)
+  return true
 }
 
 export async function ensureGroup(): Promise<void> {
@@ -140,10 +192,16 @@ export async function processOneBatch(options: ProcessOneBatchOptions = {}): Pro
 
   const redis = getBlockingRedis()
   const names = queueNames()
+  const workerId = options.consumerName || consumerName()
+
+  if (await processPendingBatch(workerId, options.pendingIdleMs ?? pendingIdleMs())) {
+    return { processed: 1 }
+  }
+
   const response = await redis.xreadgroup(
     'GROUP',
     names.group,
-    options.consumerName || consumerName(),
+    workerId,
     'COUNT',
     1,
     'BLOCK',
@@ -156,7 +214,7 @@ export async function processOneBatch(options: ProcessOneBatchOptions = {}): Pro
   const message = response?.[0]?.[1]?.[0]
   if (!message) return { processed: 0 }
 
-  await handleMessage(message[0], message[1], options.consumerName || consumerName())
+  await handleMessage(message[0], message[1], workerId)
   return { processed: 1 }
 }
 
