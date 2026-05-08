@@ -22,7 +22,6 @@ export function redisOptionsForMode(mode: RedisClientMode): RedisOptions {
     maxRetriesPerRequest: 1,
     commandTimeout: 5_000,
     connectTimeout: 5_000,
-    enableOfflineQueue: false,
     retryStrategy: attempts => (attempts > 2 ? null : Math.min(attempts * 200, 1_000)),
   }
 }
