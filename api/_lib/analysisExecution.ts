@@ -203,6 +203,7 @@ export async function executeAnalysis(input: ExecuteAnalysisInput): Promise<Anal
 
     const report = parseAnalysisReport(fullResult)
     const rawResult: AnalysisPipelineRawResult = { fullResult, sourceMode, errors }
+    await chargeAnalysisCredit(input.analysisId)
     await updateAnalysis(input.analysisId, {
       status: 'completed',
       score: report.score,
@@ -211,7 +212,6 @@ export async function executeAnalysis(input: ExecuteAnalysisInput): Promise<Anal
       completed_at: new Date().toISOString(),
       source_mode: sourceMode,
     })
-    await chargeAnalysisCredit(input.analysisId)
 
     return { analysisId: input.analysisId, report, rawResult, sourceMode, errors }
   } catch (err) {

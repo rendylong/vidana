@@ -175,4 +175,18 @@ describe('executeAnalysis', () => {
     expect(mocks.recordAnalysisFailure).toHaveBeenCalledTimes(1)
     expect(mocks.chargeAnalysisCredit).not.toHaveBeenCalled()
   })
+
+  it('does not mark completed when credit charging fails', async () => {
+    mocks.sseChunks.push([JSON.stringify(validReport)])
+    mocks.chargeAnalysisCredit.mockRejectedValue(new Error('可用分析次数不足，请联系管理员增加额度。'))
+
+    await expect(executeAnalysis(executionInput())).rejects.toThrow('可用分析次数不足')
+
+    expect(mocks.updateAnalysis.mock.calls).not.toEqual(
+      expect.arrayContaining([
+        ['analysis-1', expect.objectContaining({ status: 'completed' })],
+      ]),
+    )
+    expect(mocks.recordAnalysisFailure).toHaveBeenCalledWith('analysis-1', expect.any(Error))
+  })
 })

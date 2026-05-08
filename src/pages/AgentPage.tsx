@@ -89,6 +89,8 @@ type ProgressState = 'idle' | 'uploading' | 'queued' | 'preparing' | 'processing
 
 const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms))
 
+const terminalStatuses = new Set(['completed', 'failed', 'canceled'])
+
 const categoryConfig: Record<string, { icon: typeof Eye; color: string; label: string }> = {
   '视觉': { icon: Eye, color: 'text-sky-700 bg-sky-50 border-sky-100', label: '视觉' },
   '剪辑': { icon: FilmSlate, color: 'text-zinc-700 bg-zinc-100 border-zinc-200', label: '剪辑' },
@@ -338,11 +340,13 @@ export default function AgentPage() {
 
   useEffect(() => {
     if (!id || !user) return
+    let cancelled = false
     ;(async () => {
       try {
         const res = await fetch(`/api/history/${id}`, { credentials: 'include' })
         if (!res.ok) return
         const analysis: Analysis = await res.json()
+        if (cancelled) return
         const loadedMode: AgentMode = analysis.analysis_type === 'benchmark' ? 'benchmark' : 'analysis'
         const benchmarkFields = parseBenchmarkContext(analysis.context)
         setActiveAnalysis(analysis)
@@ -363,6 +367,49 @@ export default function AgentPage() {
           setResult(null)
           setBenchmarkResult(null)
           setProgress(nextProgress)
+          if (loadedMode === 'analysis') {
+            void (async () => {
+              while (!cancelled) {
+                await sleep(2500)
+                if (cancelled) return
+                const latest = await apiFetch<Analysis>(`/history/${analysis.id}`)
+                if (cancelled) return
+                setActiveAnalysis(latest)
+                const latestProgress = statusProgress[latest.status]
+                if (latestProgress) {
+                  setProgress(latestProgress)
+                  continue
+                }
+                if (latest.status === 'completed') {
+                  if (latest.report) {
+                    setProgress('finalizing')
+                    const parsed = parseReport(latest.report)
+                    if (parsed) {
+                      setResult(parsed)
+                      setProgress('done')
+                      refreshHistory()
+                      return
+                    }
+                  }
+                  setProgress('error')
+                  setError('这条历史分析没有返回摘要')
+                  return
+                }
+                if (latest.status === 'failed' || latest.status === 'canceled') {
+                  setProgress('error')
+                  setError(latest.error_message || (latest.status === 'canceled' ? '这条历史分析已取消' : '这条历史分析未成功完成'))
+                  refreshHistory()
+                  return
+                }
+                if (terminalStatuses.has(latest.status)) return
+              }
+            })().catch(err => {
+              if (!cancelled) {
+                setProgress('error')
+                setError(err instanceof Error ? err.message : '历史记录加载失败')
+              }
+            })
+          }
         } else if (analysis.status === 'completed') {
           setResult(null)
           setBenchmarkResult(null)
@@ -396,10 +443,11 @@ export default function AgentPage() {
           setProgress('idle')
         }
       } catch {
-        setError('历史记录加载失败')
+        if (!cancelled) setError('历史记录加载失败')
       }
     })()
-  }, [id, user])
+    return () => { cancelled = true }
+  }, [id, user, refreshHistory])
 
   const resetWorkspace = () => {
     setFile(null)
