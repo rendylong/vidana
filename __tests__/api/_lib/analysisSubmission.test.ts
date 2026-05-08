@@ -90,4 +90,14 @@ describe('submitAnalysisJob', () => {
       error_message: 'Failed to enqueue analysis: redis unavailable',
     })
   })
+
+  it('surfaces both enqueue and compensation errors when marking failed also fails', async () => {
+    mocks.enqueueAnalysis.mockRejectedValue(new Error('redis unavailable'))
+    mocks.updateAnalysis.mockRejectedValue(new Error('database unavailable'))
+    const { submitAnalysisJob } = await import('../../../api/_lib/analysisSubmission')
+
+    await expect(submitAnalysisJob(input())).rejects.toThrow(
+      'Failed to enqueue analysis and mark it failed: database unavailable; enqueue error: redis unavailable',
+    )
+  })
 })

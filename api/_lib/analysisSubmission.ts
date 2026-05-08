@@ -54,10 +54,17 @@ export async function submitAnalysisJob(input: SubmitAnalysisJobInput): Promise<
       queuedAt,
     })
   } catch (error) {
-    await updateAnalysis(analysis.id, {
-      status: 'failed',
-      error_message: `Failed to enqueue analysis: ${errorMessage(error)}`,
-    }).catch(() => undefined)
+    const enqueueMessage = errorMessage(error)
+    try {
+      await updateAnalysis(analysis.id, {
+        status: 'failed',
+        error_message: `Failed to enqueue analysis: ${enqueueMessage}`,
+      })
+    } catch (compensationError) {
+      throw new Error(
+        `Failed to enqueue analysis and mark it failed: ${errorMessage(compensationError)}; enqueue error: ${enqueueMessage}`,
+      )
+    }
     throw error
   }
 
