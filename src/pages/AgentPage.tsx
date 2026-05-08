@@ -85,7 +85,7 @@ interface BenchmarkResult {
 }
 
 type AgentMode = 'analysis' | 'benchmark'
-type ProgressState = 'idle' | 'uploading' | 'preparing' | 'analyzing' | 'finalizing' | 'done' | 'error'
+type ProgressState = 'idle' | 'uploading' | 'queued' | 'preparing' | 'processing' | 'analyzing' | 'finalizing' | 'done' | 'error'
 
 const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms))
 
@@ -107,7 +107,9 @@ const severityConfig: Record<string, { dot: string; label: string; text: string 
 const progressCopy: Record<ProgressState, string> = {
   idle: '等待视频和分析条件',
   uploading: '正在上传视频',
+  queued: '任务已进入队列，等待分析资源...',
   preparing: '正在准备分析任务',
+  processing: '正在分析视频内容...',
   analyzing: 'AI 正在逐场景检查视频',
   finalizing: '正在整理结构化报告',
   done: '分析完成',
@@ -306,14 +308,16 @@ export default function AgentPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
 
-  const isWorking = ['uploading', 'preparing', 'analyzing', 'finalizing'].includes(progress)
+  const isWorking = ['uploading', 'queued', 'preparing', 'processing', 'analyzing', 'finalizing'].includes(progress)
   const selectedFileName = file?.name || uploadedFileName
   const selectedFileSize = file ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : ''
   const canAnalyze = Boolean((file || storagePath) && targetAudience.trim() && platform && !isWorking)
   const canBenchmark = Boolean((file || storagePath) && ipPositioning.trim() && platform && !isWorking)
   const canSubmit = mode === 'analysis' ? canAnalyze : canBenchmark
   const tone = scoreTone(result?.score ?? 0)
-  const currentProgressCopy = mode === 'benchmark' && progress === 'analyzing' ? 'AI 正在拆解参考视频' : progressCopy[progress]
+  const currentProgressCopy = mode === 'benchmark' && (progress === 'processing' || progress === 'analyzing')
+    ? 'AI 正在拆解参考视频'
+    : progressCopy[progress]
 
   const refreshHistory = useCallback(() => {
     if (!user) return
@@ -448,9 +452,13 @@ export default function AgentPage() {
       const analysis = await apiFetch<Analysis>(`/history/${analysisId}`)
       setActiveAnalysis(analysis)
 
-      if (analysis.status === 'queued' || analysis.status === 'pending') {
+      if (analysis.status === 'queued') {
+        setProgress('queued')
+      } else if (analysis.status === 'pending') {
         setProgress('preparing')
-      } else if (analysis.status === 'processing' || analysis.status === 'analyzing') {
+      } else if (analysis.status === 'processing') {
+        setProgress('processing')
+      } else if (analysis.status === 'analyzing') {
         setProgress('analyzing')
       } else if (analysis.status === 'completed') {
         if (analysis.report) {
