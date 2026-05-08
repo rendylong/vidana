@@ -44,7 +44,9 @@ function createResponse() {
   }
 }
 
-function createRequest(method = 'GET', id: unknown = 'analysis-1', authorization: unknown = 'Bearer valid-key') {
+const VALID_ANALYSIS_ID = '550e8400-e29b-41d4-a716-446655440000'
+
+function createRequest(method = 'GET', id: unknown = VALID_ANALYSIS_ID, authorization: unknown = 'Bearer valid-key') {
   return {
     method,
     query: { id },
@@ -74,7 +76,7 @@ describe('public analysis status API', () => {
     verifyBearerApiKeyMock.mockResolvedValue(null)
     const response = createResponse()
 
-    await handler(createRequest('GET', 'analysis-1', ['Bearer first-key', 'Bearer second-key']) as never, response.res as never)
+    await handler(createRequest('GET', VALID_ANALYSIS_ID, ['Bearer first-key', 'Bearer second-key']) as never, response.res as never)
 
     expect(verifyBearerApiKeyMock).toHaveBeenCalledWith('Bearer first-key')
     expect(response.statusCode).toBe(401)
@@ -91,13 +93,23 @@ describe('public analysis status API', () => {
     expect(getAnalysisMock).not.toHaveBeenCalled()
   })
 
+  it('rejects malformed analysis ids before loading analysis data', async () => {
+    const response = createResponse()
+
+    await handler(createRequest('GET', 'not-a-uuid') as never, response.res as never)
+
+    expect(response.statusCode).toBe(400)
+    expect(response.jsonBody).toEqual({ error: 'Invalid analysis id' })
+    expect(getAnalysisMock).not.toHaveBeenCalled()
+  })
+
   it('returns 404 when the analysis is not found for the API key owner', async () => {
     getAnalysisMock.mockResolvedValue(null)
     const response = createResponse()
 
     await handler(createRequest() as never, response.res as never)
 
-    expect(getAnalysisMock).toHaveBeenCalledWith('analysis-1', 'user-1')
+    expect(getAnalysisMock).toHaveBeenCalledWith(VALID_ANALYSIS_ID, 'user-1')
     expect(response.statusCode).toBe(404)
     expect(response.jsonBody).toEqual({ error: 'Analysis not found' })
   })
