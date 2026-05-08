@@ -116,6 +116,13 @@ const progressCopy: Record<ProgressState, string> = {
   error: '分析失败',
 }
 
+const statusProgress: Partial<Record<Analysis['status'], ProgressState>> = {
+  queued: 'queued',
+  pending: 'preparing',
+  processing: 'processing',
+  analyzing: 'analyzing',
+}
+
 function parseReport(report: unknown): AnalysisResult | null {
   if (!report || typeof report !== 'object') return null
   const r = report as Record<string, unknown>
@@ -351,27 +358,38 @@ export default function AgentPage() {
         setBenchmarkGoal(loadedMode === 'benchmark' ? benchmarkFields.benchmarkGoal : '')
         setFile(null)
         setError('')
-        if (analysis.status === 'completed' && analysis.report) {
+        const nextProgress = statusProgress[analysis.status]
+        if (nextProgress) {
+          setResult(null)
+          setBenchmarkResult(null)
+          setProgress(nextProgress)
+        } else if (analysis.status === 'completed') {
+          setResult(null)
+          setBenchmarkResult(null)
           if (loadedMode === 'benchmark') {
-            const parsed = parseBenchmarkReport(analysis.report)
-            setResult(null)
+            const parsed = analysis.report ? parseBenchmarkReport(analysis.report) : null
             if (parsed) {
               setBenchmarkResult(parsed)
               setProgress('done')
+            } else {
+              setProgress('error')
+              setError('这条历史分析没有返回摘要')
             }
           } else {
-            const parsed = parseReport(analysis.report)
-            setBenchmarkResult(null)
+            const parsed = analysis.report ? parseReport(analysis.report) : null
             if (parsed) {
               setResult(parsed)
               setProgress('done')
+            } else {
+              setProgress('error')
+              setError('这条历史分析没有返回摘要')
             }
           }
-        } else if (analysis.status === 'failed') {
+        } else if (analysis.status === 'failed' || analysis.status === 'canceled') {
           setResult(null)
           setBenchmarkResult(null)
           setProgress('error')
-          setError('这条历史分析未成功完成')
+          setError(analysis.error_message || (analysis.status === 'canceled' ? '这条历史分析已取消' : '这条历史分析未成功完成'))
         } else {
           setResult(null)
           setBenchmarkResult(null)
@@ -452,14 +470,9 @@ export default function AgentPage() {
       const analysis = await apiFetch<Analysis>(`/history/${analysisId}`)
       setActiveAnalysis(analysis)
 
-      if (analysis.status === 'queued') {
-        setProgress('queued')
-      } else if (analysis.status === 'pending') {
-        setProgress('preparing')
-      } else if (analysis.status === 'processing') {
-        setProgress('processing')
-      } else if (analysis.status === 'analyzing') {
-        setProgress('analyzing')
+      const nextProgress = statusProgress[analysis.status]
+      if (nextProgress) {
+        setProgress(nextProgress)
       } else if (analysis.status === 'completed') {
         if (analysis.report) {
           setProgress('finalizing')
