@@ -96,6 +96,34 @@ export async function updateAnalysis(id: string, updates: Partial<Analysis>): Pr
   if (error) throw new Error(`Failed to update analysis: ${error.message}`)
 }
 
+export async function getAnalysisById(id: string): Promise<Analysis | null> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase.from('analyses').select('*').eq('id', id).maybeSingle()
+  if (error) throw new Error(`Failed to get analysis: ${error.message}`)
+  return data as Analysis | null
+}
+
+export async function claimAnalysisForProcessing(id: string, workerId: string): Promise<boolean> {
+  const supabase = getSupabase()
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('analyses')
+    .update({
+      status: 'processing',
+      locked_by: workerId,
+      locked_at: now,
+      started_at: now,
+      next_retry_at: null,
+    })
+    .eq('id', id)
+    .eq('status', 'queued')
+    .select('id')
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to claim analysis: ${error.message}`)
+  return Boolean(data)
+}
+
 export async function countActiveAnalysisTasks(userId: string): Promise<number> {
   const supabase = getSupabase()
   const { data, error } = await supabase.rpc('count_active_analysis_tasks', { p_user_id: userId })

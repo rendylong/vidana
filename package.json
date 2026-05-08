@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "dev:full": "set -a; . ./.env.local; set +a; vercel dev --listen 5174",
+    "worker:analysis": "tsx worker/analysisWorker.ts",
     "start:server": "tsx server/index.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
