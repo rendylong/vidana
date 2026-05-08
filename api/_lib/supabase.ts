@@ -95,6 +95,13 @@ export async function updateAnalysis(id: string, updates: Partial<Analysis>): Pr
   await supabase.from('analyses').update(updates).eq('id', id)
 }
 
+export async function countActiveAnalysisTasks(userId: string): Promise<number> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase.rpc('count_active_analysis_tasks', { p_user_id: userId })
+  if (error) throw new Error(`Failed to count active analysis tasks: ${error.message}`)
+  return Number(data || 0)
+}
+
 export async function getAnalysis(id: string, userId: string): Promise<Analysis | null> {
   const supabase = getSupabase()
   const { data } = await supabase.from('analyses').select('*').eq('id', id).eq('user_id', userId).single()

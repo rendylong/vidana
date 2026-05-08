@@ -112,3 +112,46 @@ describe('createAnalysis', () => {
     )
   })
 })
+
+describe('countActiveAnalysisTasks', () => {
+  afterEach(() => {
+    vi.resetModules()
+    vi.unstubAllEnvs()
+    supabaseMocks.createClient.mockReset()
+  })
+
+  it('counts active queued and processing tasks through the Supabase RPC', async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: 2,
+      error: null,
+    })
+
+    supabaseMocks.createClient.mockReturnValue({ rpc })
+
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co')
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', fakeSupabaseJwt('service_role'))
+
+    const { countActiveAnalysisTasks } = await import('../../../api/_lib/supabase')
+
+    await expect(countActiveAnalysisTasks('user-1')).resolves.toBe(2)
+    expect(rpc).toHaveBeenCalledWith('count_active_analysis_tasks', { p_user_id: 'user-1' })
+  })
+
+  it('throws when the active task count RPC fails', async () => {
+    supabaseMocks.createClient.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'function missing' },
+      }),
+    })
+
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co')
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', fakeSupabaseJwt('service_role'))
+
+    const { countActiveAnalysisTasks } = await import('../../../api/_lib/supabase')
+
+    await expect(countActiveAnalysisTasks('user-1')).rejects.toThrow(
+      'Failed to count active analysis tasks: function missing',
+    )
+  })
+})
