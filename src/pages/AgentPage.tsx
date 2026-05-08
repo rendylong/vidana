@@ -11,6 +11,7 @@ import {
   Globe,
   Info,
   MusicNote,
+  Plus,
   SealCheck,
   Sidebar,
   SidebarSimple,
@@ -27,6 +28,7 @@ import {
 } from '@phosphor-icons/react'
 import { PLATFORMS, type Analysis, type Platform } from '../lib/types'
 import { useAuth } from '../hooks/useAuth'
+import { apiFetch } from '../api/client'
 
 interface AnalysisResult {
   score: number
@@ -84,6 +86,8 @@ interface BenchmarkResult {
 
 type AgentMode = 'analysis' | 'benchmark'
 type ProgressState = 'idle' | 'uploading' | 'preparing' | 'analyzing' | 'finalizing' | 'done' | 'error'
+
+const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms))
 
 const categoryConfig: Record<string, { icon: typeof Eye; color: string; label: string }> = {
   '视觉': { icon: Eye, color: 'text-sky-700 bg-sky-50 border-sky-100', label: '视觉' },
@@ -436,6 +440,38 @@ export default function AgentPage() {
     if (id) navigate('/')
   }
 
+  const waitForAnalysisResult = async (analysisId: string) => {
+    const startedAt = Date.now()
+    const timeoutMs = 15 * 60 * 1000
+
+    while (Date.now() - startedAt < timeoutMs) {
+      const analysis = await apiFetch<Analysis>(`/history/${analysisId}`)
+      setActiveAnalysis(analysis)
+
+      if (analysis.status === 'queued' || analysis.status === 'pending') {
+        setProgress('preparing')
+      } else if (analysis.status === 'processing' || analysis.status === 'analyzing') {
+        setProgress('analyzing')
+      } else if (analysis.status === 'completed') {
+        if (analysis.report) {
+          setProgress('finalizing')
+          const parsed = parseReport(analysis.report)
+          if (parsed) {
+            setResult(parsed)
+            return
+          }
+        }
+        throw new Error('本次分析没有返回摘要')
+      } else if (analysis.status === 'failed' || analysis.status === 'canceled') {
+        throw new Error(analysis.error_message || '分析任务失败')
+      }
+
+      await sleep(2500)
+    }
+
+    throw new Error('分析任务等待超时，请稍后在历史记录中查看结果')
+  }
+
   const handleAnalyze = async () => {
     if (!user || isWorking) return
     if (!file && !storagePath) {
@@ -477,67 +513,16 @@ export default function AgentPage() {
         }),
       })
 
-      if (!res.ok || !res.body) {
+      if (!res.ok) {
         const data = await res.json().catch(() => ({ error: '分析请求失败' }))
         throw new Error(data.error || '分析请求失败')
       }
 
-      const reader = res.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let eventName = 'message'
-      let streamedText = ''
-      let receivedParsedResult = false
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const blocks = buffer.split('\n\n')
-        buffer = blocks.pop() || ''
-
-        for (const block of blocks) {
-          const lines = block.split('\n').filter(Boolean)
-          const eventLine = lines.find(line => line.startsWith('event: '))
-          const dataLine = lines.find(line => line.startsWith('data: '))
-          if (eventLine) eventName = eventLine.slice(7).trim()
-          if (!dataLine) continue
-
-          const data = JSON.parse(dataLine.slice(6))
-          if (eventName === 'status') {
-            if (data.status === 'preparing') setProgress('preparing')
-            if (data.status === 'analyzing') setProgress('analyzing')
-          }
-          if (eventName === 'progress') {
-            setProgress('analyzing')
-            if (typeof data.chunk === 'string') streamedText += data.chunk
-          }
-          if (eventName === 'result') {
-            setProgress('finalizing')
-            const parsed = parseReport(data.report)
-            if (parsed) {
-              receivedParsedResult = true
-              setResult(parsed)
-            }
-          }
-          if (eventName === 'error') {
-            throw new Error(String(data.message || '分析失败'))
-          }
-        }
-      }
-
-      if (!receivedParsedResult && streamedText) {
-        const cleaned = streamedText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-        const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
-        if (jsonMatch) {
-          const parsed = parseReport(JSON.parse(jsonMatch[0]))
-          if (parsed) {
-            receivedParsedResult = true
-            setResult(parsed)
-          }
-        }
-      }
-
+      const data = await res.json().catch(() => null) as { analysisId?: string; status?: string } | null
+      if (!data?.analysisId) throw new Error('分析任务创建失败')
+      setProgress('preparing')
+      refreshHistory()
+      await waitForAnalysisResult(data.analysisId)
       setProgress('done')
       refreshHistory()
     } catch (err) {
@@ -710,7 +695,7 @@ export default function AgentPage() {
               className="flex h-8 w-8 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-500 transition hover:border-zinc-300 hover:bg-zinc-50 hover:text-zinc-900 active:scale-[0.96]"
               aria-label="新建分析"
             >
-              <ArrowRight size={15} weight="regular" />
+              <Plus size={15} weight="bold" />
             </button>
             <div className="mt-2 h-px w-8 bg-zinc-200" />
             <div className="flex flex-col items-center gap-1 rounded-xl bg-zinc-100 px-2 py-2">
@@ -724,10 +709,10 @@ export default function AgentPage() {
               <div className="flex gap-2">
                 <button
                   onClick={resetWorkspace}
-                  className="flex min-w-0 flex-1 items-center justify-between rounded-xl bg-zinc-950 px-3.5 py-3 text-sm font-medium text-white transition active:scale-[0.98]"
+                  className="flex min-w-0 flex-1 items-center justify-center rounded-xl bg-zinc-950 px-3.5 py-3 text-sm font-medium text-white transition active:scale-[0.98]"
+                  aria-label="新建分析"
                 >
-                  新建分析
-                  <ArrowRight size={16} weight="bold" />
+                  <Plus size={18} weight="bold" />
                 </button>
                 <button
                   onClick={() => setSidebarOpen(false)}
@@ -813,10 +798,10 @@ export default function AgentPage() {
               <div className="flex items-center gap-2">
                 <button
                   onClick={resetWorkspace}
-                  className="flex min-w-0 flex-1 items-center justify-between rounded-xl bg-zinc-950 px-3.5 py-3 text-sm font-medium text-white transition active:scale-[0.98]"
+                  className="flex min-w-0 flex-1 items-center justify-center rounded-xl bg-zinc-950 px-3.5 py-3 text-sm font-medium text-white transition active:scale-[0.98]"
+                  aria-label="新建分析"
                 >
-                  新建分析
-                  <ArrowRight size={16} weight="bold" />
+                  <Plus size={18} weight="bold" />
                 </button>
                 <button
                   onClick={() => setMobileHistoryOpen(false)}
@@ -902,7 +887,7 @@ export default function AgentPage() {
             className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-600 shadow-sm active:scale-[0.98]"
             aria-label="新建分析"
           >
-            <ArrowRight size={16} />
+            <Plus size={16} weight="bold" />
           </button>
           <div className="min-w-0 flex-1">
             <p className="flex min-w-0 items-baseline gap-2">
