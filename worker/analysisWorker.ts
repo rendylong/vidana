@@ -175,17 +175,27 @@ async function handleMessage(
 async function processPendingBatch(workerId: string, minIdleMs: number, staleBeforeIso: string): Promise<number | null> {
   const redis = getBlockingRedis()
   const names = queueNames()
-  const response = await redis.xautoclaim(
-    names.stream,
-    names.group,
-    workerId,
-    minIdleMs,
-    '0-0',
-    'COUNT',
-    1,
-  ) as [string, StreamMessage[]]
+  let message: StreamMessage | undefined
+  try {
+    const response = await redis.xautoclaim(
+      names.stream,
+      names.group,
+      workerId,
+      minIdleMs,
+      '0-0',
+      'COUNT',
+      1,
+    ) as [string, StreamMessage[]]
+    message = response?.[1]?.[0]
+  } catch (err) {
+    if (!errorMessage(err).toLowerCase().includes('unknown command')) throw err
+    const pending = await redis.xpending(names.stream, names.group, '-', '+', 1) as Array<[string, string, number, number]>
+    const pendingId = pending?.[0]?.[0]
+    if (!pendingId) return null
+    const claimed = await redis.xclaim(names.stream, names.group, workerId, minIdleMs, pendingId) as StreamMessage[]
+    message = claimed?.[0]
+  }
 
-  const message = response?.[1]?.[0]
   if (!message) return null
 
   return await handleMessage(message[0], message[1], workerId, true, staleBeforeIso) ? 1 : 0
