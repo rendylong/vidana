@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { verifyBearerApiKey } from '../../_lib/apiKeys'
 import { formatAnalysisMarkdown } from '../../_lib/markdown'
-import { getAnalysis } from '../../_lib/supabase'
+import { getAnalysisForUserStrict } from '../../_lib/supabase'
 import type { AnalysisReport } from '../../_lib/types'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
@@ -27,7 +27,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!id) return res.status(400).json({ error: 'analysis id is required' })
   if (!UUID_PATTERN.test(id)) return res.status(400).json({ error: 'Invalid analysis id' })
 
-  const analysis = await getAnalysis(id, auth.userId)
+  let analysis
+  try {
+    analysis = await getAnalysisForUserStrict(id, auth.userId)
+  } catch (err) {
+    console.error('Public analysis status error:', err)
+    return res.status(500).json({ error: 'Failed to load analysis status' })
+  }
+
   if (!analysis) return res.status(404).json({ error: 'Analysis not found' })
 
   if (analysis.status === 'completed' && analysis.report) {

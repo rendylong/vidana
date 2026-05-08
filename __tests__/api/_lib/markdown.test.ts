@@ -32,7 +32,8 @@ describe('formatAnalysisMarkdown', () => {
       platform: '抖音',
     })
 
-    expect(markdown).toContain('# Ovidly 视频分析报告')
+    expect(markdown).toContain('# Vidana 视频分析报告')
+    expect(markdown).not.toContain('Ovidly')
     expect(markdown).toContain('- 目标用户：二三线城市 30-50 岁男性')
     expect(markdown).toContain('- 投放平台：抖音')
     expect(markdown).toContain('| 00:03 | high | 人物 | 开场表演略显叫卖。 | 改成真实用户痛点场景。 |')

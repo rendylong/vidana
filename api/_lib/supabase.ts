@@ -183,6 +183,19 @@ export async function getAnalysis(id: string, userId: string): Promise<Analysis 
   return data as Analysis | null
 }
 
+export async function getAnalysisForUserStrict(id: string, userId: string): Promise<Analysis | null> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase
+    .from('analyses')
+    .select('*')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to get analysis: ${error.message}`)
+  return data as Analysis | null
+}
+
 export async function listAnalyses(userId: string, page = 1, pageSize = 12): Promise<{ data: Analysis[], count: number }> {
   const supabase = getSupabase()
   const from = (page - 1) * pageSize

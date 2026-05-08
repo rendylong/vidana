@@ -3,11 +3,11 @@ import handler from '../../../api/public/analyses/[id]'
 
 const {
   verifyBearerApiKeyMock,
-  getAnalysisMock,
+  getAnalysisForUserStrictMock,
   formatAnalysisMarkdownMock,
 } = vi.hoisted(() => ({
   verifyBearerApiKeyMock: vi.fn(),
-  getAnalysisMock: vi.fn(),
+  getAnalysisForUserStrictMock: vi.fn(),
   formatAnalysisMarkdownMock: vi.fn(),
 }))
 
@@ -16,7 +16,7 @@ vi.mock('../../../api/_lib/apiKeys', () => ({
 }))
 
 vi.mock('../../../api/_lib/supabase', () => ({
-  getAnalysis: getAnalysisMock,
+  getAnalysisForUserStrict: getAnalysisForUserStrictMock,
 }))
 
 vi.mock('../../../api/_lib/markdown', () => ({
@@ -58,7 +58,7 @@ describe('public analysis status API', () => {
   beforeEach(() => {
     verifyBearerApiKeyMock.mockReset()
     verifyBearerApiKeyMock.mockResolvedValue({ userId: 'user-1', apiKeyId: 'key-1' })
-    getAnalysisMock.mockReset()
+    getAnalysisForUserStrictMock.mockReset()
     formatAnalysisMarkdownMock.mockReset()
   })
 
@@ -90,7 +90,7 @@ describe('public analysis status API', () => {
 
     expect(response.statusCode).toBe(400)
     expect(response.jsonBody).toEqual({ error: 'analysis id is required' })
-    expect(getAnalysisMock).not.toHaveBeenCalled()
+    expect(getAnalysisForUserStrictMock).not.toHaveBeenCalled()
   })
 
   it('rejects malformed analysis ids before loading analysis data', async () => {
@@ -100,22 +100,35 @@ describe('public analysis status API', () => {
 
     expect(response.statusCode).toBe(400)
     expect(response.jsonBody).toEqual({ error: 'Invalid analysis id' })
-    expect(getAnalysisMock).not.toHaveBeenCalled()
+    expect(getAnalysisForUserStrictMock).not.toHaveBeenCalled()
   })
 
   it('returns 404 when the analysis is not found for the API key owner', async () => {
-    getAnalysisMock.mockResolvedValue(null)
+    getAnalysisForUserStrictMock.mockResolvedValue(null)
     const response = createResponse()
 
     await handler(createRequest() as never, response.res as never)
 
-    expect(getAnalysisMock).toHaveBeenCalledWith(VALID_ANALYSIS_ID, 'user-1')
+    expect(getAnalysisForUserStrictMock).toHaveBeenCalledWith(VALID_ANALYSIS_ID, 'user-1')
     expect(response.statusCode).toBe(404)
     expect(response.jsonBody).toEqual({ error: 'Analysis not found' })
   })
 
+  it('returns 500 when loading analysis status fails', async () => {
+    getAnalysisForUserStrictMock.mockRejectedValue(new Error('database unavailable'))
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const response = createResponse()
+
+    await handler(createRequest() as never, response.res as never)
+
+    expect(response.statusCode).toBe(500)
+    expect(response.jsonBody).toEqual({ error: 'Failed to load analysis status' })
+
+    consoleErrorSpy.mockRestore()
+  })
+
   it('returns queued status without markdown while analysis is pending', async () => {
-    getAnalysisMock.mockResolvedValue({
+    getAnalysisForUserStrictMock.mockResolvedValue({
       id: 'analysis-1',
       user_id: 'user-1',
       status: 'queued',
@@ -143,7 +156,7 @@ describe('public analysis status API', () => {
       globalEdits: [],
       suggestions: [],
     }
-    getAnalysisMock.mockResolvedValue({
+    getAnalysisForUserStrictMock.mockResolvedValue({
       id: 'analysis-1',
       user_id: 'user-1',
       status: 'completed',
