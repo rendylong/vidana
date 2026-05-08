@@ -79,4 +79,73 @@ describe('analysis queue helpers', () => {
       }),
     )
   })
+
+  it('promotes due delayed analyses to the main stream and removes them', async () => {
+    const payload = JSON.stringify({
+      analysisId: 'analysis-1',
+      userId: 'user-1',
+      queuedAt: '2026-05-08T00:00:00.000Z',
+    })
+    const xadd = vi.fn().mockResolvedValue('message-1')
+    const zrem = vi.fn().mockResolvedValue(1)
+    const zrangebyscore = vi.fn().mockResolvedValue([payload])
+    getRedisMock.mockReturnValue({ xadd, zrem, zrangebyscore })
+    const { promoteDueDelayedAnalyses } = await import('../../../api/_lib/analysisQueue')
+
+    const promoted = await promoteDueDelayedAnalyses(Date.parse('2026-05-08T00:02:00.000Z'), 20)
+
+    expect(promoted).toBe(1)
+    expect(zrangebyscore).toHaveBeenCalledWith(
+      'vidana:analysis:delayed',
+      '-inf',
+      Date.parse('2026-05-08T00:02:00.000Z'),
+      'LIMIT',
+      0,
+      20,
+    )
+    expect(xadd).toHaveBeenCalledWith(
+      'vidana:analysis:queue',
+      '*',
+      'analysisId',
+      'analysis-1',
+      'userId',
+      'user-1',
+      'queuedAt',
+      '2026-05-08T00:00:00.000Z',
+    )
+    expect(zrem).toHaveBeenCalledWith('vidana:analysis:delayed', payload)
+  })
+
+  it('removes malformed delayed payloads without enqueueing them', async () => {
+    const xadd = vi.fn()
+    const zrem = vi.fn().mockResolvedValue(1)
+    const zrangebyscore = vi.fn().mockResolvedValue(['not-json'])
+    getRedisMock.mockReturnValue({ xadd, zrem, zrangebyscore })
+    const { promoteDueDelayedAnalyses } = await import('../../../api/_lib/analysisQueue')
+
+    const promoted = await promoteDueDelayedAnalyses(Date.parse('2026-05-08T00:02:00.000Z'), 20)
+
+    expect(promoted).toBe(0)
+    expect(xadd).not.toHaveBeenCalled()
+    expect(zrem).toHaveBeenCalledWith('vidana:analysis:delayed', 'not-json')
+  })
+
+  it('leaves delayed payloads in place and surfaces enqueue failures', async () => {
+    const payload = JSON.stringify({
+      analysisId: 'analysis-1',
+      userId: 'user-1',
+      queuedAt: '2026-05-08T00:00:00.000Z',
+    })
+    const xadd = vi.fn().mockRejectedValue(new Error('redis unavailable'))
+    const zrem = vi.fn()
+    const zrangebyscore = vi.fn().mockResolvedValue([payload])
+    getRedisMock.mockReturnValue({ xadd, zrem, zrangebyscore })
+    const { promoteDueDelayedAnalyses } = await import('../../../api/_lib/analysisQueue')
+
+    await expect(promoteDueDelayedAnalyses(Date.parse('2026-05-08T00:02:00.000Z'), 20))
+      .rejects
+      .toThrow('redis unavailable')
+
+    expect(zrem).not.toHaveBeenCalled()
+  })
 })

@@ -42,3 +42,53 @@ export async function enqueueAnalysisAfter(input: EnqueueAnalysisInput, delayMs:
   const score = Date.now() + delayMs
   return getRedis().zadd(queueNames().delayed, score, JSON.stringify(input))
 }
+
+function parseDelayedAnalysisPayload(value: string): EnqueueAnalysisInput | null {
+  try {
+    const parsed = JSON.parse(value) as Partial<EnqueueAnalysisInput>
+    if (
+      typeof parsed.analysisId === 'string' &&
+      typeof parsed.userId === 'string' &&
+      typeof parsed.queuedAt === 'string'
+    ) {
+      return {
+        analysisId: parsed.analysisId,
+        userId: parsed.userId,
+        queuedAt: parsed.queuedAt,
+      }
+    }
+  } catch {
+    return null
+  }
+  return null
+}
+
+export async function promoteDueDelayedAnalyses(nowMs = Date.now(), limit = 20): Promise<number> {
+  const redis = getRedis()
+  const names = queueNames()
+  const items = await redis.zrangebyscore(names.delayed, '-inf', nowMs, 'LIMIT', 0, limit)
+  let promoted = 0
+
+  for (const item of items) {
+    const input = parseDelayedAnalysisPayload(item)
+    if (!input) {
+      await redis.zrem(names.delayed, item)
+      continue
+    }
+
+    await redis.xadd(
+      names.stream,
+      '*',
+      'analysisId',
+      input.analysisId,
+      'userId',
+      input.userId,
+      'queuedAt',
+      input.queuedAt,
+    )
+    await redis.zrem(names.delayed, item)
+    promoted += 1
+  }
+
+  return promoted
+}
