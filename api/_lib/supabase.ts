@@ -92,7 +92,8 @@ export async function createAnalysis(userId: string, videoUrl: string, opts: {
 
 export async function updateAnalysis(id: string, updates: Partial<Analysis>): Promise<void> {
   const supabase = getSupabase()
-  await supabase.from('analyses').update(updates).eq('id', id)
+  const { error } = await supabase.from('analyses').update(updates).eq('id', id)
+  if (error) throw new Error(`Failed to update analysis: ${error.message}`)
 }
 
 export async function countActiveAnalysisTasks(userId: string): Promise<number> {
@@ -100,6 +101,31 @@ export async function countActiveAnalysisTasks(userId: string): Promise<number> 
   const { data, error } = await supabase.rpc('count_active_analysis_tasks', { p_user_id: userId })
   if (error) throw new Error(`Failed to count active analysis tasks: ${error.message}`)
   return Number(data || 0)
+}
+
+export interface CreateQueuedAnalysisJobInput {
+  userId: string
+  videoUrl: string
+  targetAudience?: string
+  platform?: string
+  context?: string
+  analysisType?: AnalysisType
+  activeLimit?: number
+}
+
+export async function createQueuedAnalysisJob(input: CreateQueuedAnalysisJobInput): Promise<Analysis> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase.rpc('create_queued_analysis_job', {
+    p_user_id: input.userId,
+    p_video_url: input.videoUrl,
+    p_target_audience: input.targetAudience ?? null,
+    p_platform: input.platform ?? null,
+    p_context: input.context ?? null,
+    p_analysis_type: input.analysisType || 'analysis',
+    p_active_limit: input.activeLimit ?? 3,
+  })
+  if (error || !data) throw new Error(`Failed to create queued analysis job: ${error?.message || 'empty response'}`)
+  return data as Analysis
 }
 
 export async function getAnalysis(id: string, userId: string): Promise<Analysis | null> {

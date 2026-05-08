@@ -155,3 +155,99 @@ describe('countActiveAnalysisTasks', () => {
     )
   })
 })
+
+describe('updateAnalysis', () => {
+  afterEach(() => {
+    vi.resetModules()
+    vi.unstubAllEnvs()
+    supabaseMocks.createClient.mockReset()
+  })
+
+  it('throws when the Supabase update fails', async () => {
+    supabaseMocks.createClient.mockReturnValue({
+      from: vi.fn(() => ({
+        update: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({
+            error: { message: 'permission denied' },
+          }),
+        }),
+      })),
+    })
+
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co')
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', fakeSupabaseJwt('service_role'))
+
+    const { updateAnalysis } = await import('../../../api/_lib/supabase')
+
+    await expect(updateAnalysis('analysis-1', { status: 'failed' })).rejects.toThrow(
+      'Failed to update analysis: permission denied',
+    )
+  })
+})
+
+describe('createQueuedAnalysisJob', () => {
+  afterEach(() => {
+    vi.resetModules()
+    vi.unstubAllEnvs()
+    supabaseMocks.createClient.mockReset()
+  })
+
+  it('creates a queued analysis row through the atomic Supabase RPC', async () => {
+    const row = {
+      id: 'analysis-1',
+      user_id: 'user-1',
+      queued_at: '2026-05-08T10:00:00.000Z',
+      status: 'queued',
+    }
+    const rpc = vi.fn().mockResolvedValue({
+      data: row,
+      error: null,
+    })
+
+    supabaseMocks.createClient.mockReturnValue({ rpc })
+
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co')
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', fakeSupabaseJwt('service_role'))
+
+    const { createQueuedAnalysisJob } = await import('../../../api/_lib/supabase')
+
+    await expect(createQueuedAnalysisJob({
+      userId: 'user-1',
+      videoUrl: 'user-1/video.mp4',
+      targetAudience: '用户',
+      platform: '抖音',
+      context: '',
+      analysisType: 'benchmark',
+      activeLimit: 5,
+    })).resolves.toBe(row)
+    expect(rpc).toHaveBeenCalledWith('create_queued_analysis_job', {
+      p_user_id: 'user-1',
+      p_video_url: 'user-1/video.mp4',
+      p_target_audience: '用户',
+      p_platform: '抖音',
+      p_context: '',
+      p_analysis_type: 'benchmark',
+      p_active_limit: 5,
+    })
+  })
+
+  it('throws when the queued analysis RPC fails', async () => {
+    supabaseMocks.createClient.mockReturnValue({
+      rpc: vi.fn().mockResolvedValue({
+        data: null,
+        error: { message: 'ACTIVE_ANALYSIS_LIMIT_EXCEEDED' },
+      }),
+    })
+
+    vi.stubEnv('VITE_SUPABASE_URL', 'https://project.supabase.co')
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', fakeSupabaseJwt('service_role'))
+
+    const { createQueuedAnalysisJob } = await import('../../../api/_lib/supabase')
+
+    await expect(createQueuedAnalysisJob({
+      userId: 'user-1',
+      videoUrl: 'user-1/video.mp4',
+      activeLimit: 3,
+    })).rejects.toThrow('Failed to create queued analysis job: ACTIVE_ANALYSIS_LIMIT_EXCEEDED')
+  })
+})

@@ -1,6 +1,6 @@
 import { activeTaskLimit, enqueueAnalysis } from './analysisQueue'
-import { countActiveAnalysisTasks, createAnalysis, updateAnalysis } from './supabase'
-import type { AnalysisType } from './types'
+import { createQueuedAnalysisJob, updateAnalysis } from './supabase'
+import type { Analysis, AnalysisType } from './types'
 
 export class ActiveAnalysisLimitError extends Error {
   constructor(limit: number) {
@@ -18,34 +18,48 @@ export interface SubmitAnalysisJobInput {
   analysisType?: AnalysisType
 }
 
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return String(error)
+}
+
 export async function submitAnalysisJob(input: SubmitAnalysisJobInput): Promise<{ analysisId: string }> {
   const limit = activeTaskLimit()
-  const activeTasks = await countActiveAnalysisTasks(input.userId)
-  if (activeTasks >= limit) {
-    throw new ActiveAnalysisLimitError(limit)
+  const analysisType = input.analysisType || 'analysis'
+
+  let analysis: Analysis
+  try {
+    analysis = await createQueuedAnalysisJob({
+      userId: input.userId,
+      videoUrl: input.storagePath,
+      targetAudience: input.targetAudience,
+      platform: input.platform,
+      context: input.context,
+      analysisType,
+      activeLimit: limit,
+    })
+  } catch (error) {
+    if (errorMessage(error).includes('ACTIVE_ANALYSIS_LIMIT_EXCEEDED')) {
+      throw new ActiveAnalysisLimitError(limit)
+    }
+    throw error
   }
 
-  const analysisType = input.analysisType || 'analysis'
-  const analysis = await createAnalysis(input.userId, input.storagePath, {
-    targetAudience: input.targetAudience,
-    platform: input.platform,
-    context: input.context,
-    analysisType,
-  })
-  const queuedAt = new Date().toISOString()
+  const queuedAt = analysis.queued_at || new Date().toISOString()
 
-  await updateAnalysis(analysis.id, {
-    status: 'queued',
-    queued_at: queuedAt,
-    attempt_count: 0,
-    max_attempts: 3,
-    error_message: null,
-  })
-  await enqueueAnalysis({
-    analysisId: analysis.id,
-    userId: input.userId,
-    queuedAt,
-  })
+  try {
+    await enqueueAnalysis({
+      analysisId: analysis.id,
+      userId: input.userId,
+      queuedAt,
+    })
+  } catch (error) {
+    await updateAnalysis(analysis.id, {
+      status: 'failed',
+      error_message: `Failed to enqueue analysis: ${errorMessage(error)}`,
+    }).catch(() => undefined)
+    throw error
+  }
 
   return { analysisId: analysis.id }
 }
