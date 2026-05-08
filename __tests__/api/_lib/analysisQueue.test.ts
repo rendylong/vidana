@@ -8,17 +8,20 @@ describe('analysis queue helpers', () => {
   beforeEach(() => {
     vi.resetModules()
     getRedisMock.mockReset()
+    vi.restoreAllMocks()
     delete process.env.ANALYSIS_QUEUE_STREAM
     delete process.env.ANALYSIS_QUEUE_GROUP
+    delete process.env.ANALYSIS_QUEUE_DELAYED
     delete process.env.ANALYSIS_ACTIVE_LIMIT_PER_USER
   })
 
-  it('uses the default queue stream and group names', async () => {
+  it('uses the default queue stream, group, and delayed queue names', async () => {
     const { queueNames } = await import('../../../api/_lib/analysisQueue')
 
     expect(queueNames()).toEqual({
       stream: 'vidana:analysis:queue',
       group: 'vidana-workers',
+      delayed: 'vidana:analysis:delayed',
     })
   })
 
@@ -50,6 +53,30 @@ describe('analysis queue helpers', () => {
       'user-1',
       'queuedAt',
       '2026-05-08T00:00:00.000Z',
+    )
+  })
+
+  it('enqueues delayed analyses into a Redis sorted set', async () => {
+    const zadd = vi.fn().mockResolvedValue(1)
+    getRedisMock.mockReturnValue({ zadd })
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-05-08T00:00:00.000Z'))
+    const { enqueueAnalysisAfter } = await import('../../../api/_lib/analysisQueue')
+
+    const result = await enqueueAnalysisAfter({
+      analysisId: 'analysis-1',
+      userId: 'user-1',
+      queuedAt: '2026-05-08T00:00:00.000Z',
+    }, 120_000)
+
+    expect(result).toBe(1)
+    expect(zadd).toHaveBeenCalledWith(
+      'vidana:analysis:delayed',
+      Date.parse('2026-05-08T00:02:00.000Z'),
+      JSON.stringify({
+        analysisId: 'analysis-1',
+        userId: 'user-1',
+        queuedAt: '2026-05-08T00:00:00.000Z',
+      }),
     )
   })
 })

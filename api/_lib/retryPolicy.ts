@@ -15,7 +15,7 @@ export function isRetryableAnalysisError(err: unknown): boolean {
   const message = errorMessage(err).toLowerCase()
   return (
     message.includes('mimo api error 429') ||
-    message.includes('mimo api error 500') ||
+    /mimo api error:?\s*5\d\d/.test(message) ||
     message.includes('failed to download url data') ||
     message.includes('empty response') ||
     message.includes('network') ||

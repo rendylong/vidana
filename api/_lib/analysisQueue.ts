@@ -2,6 +2,7 @@ import { getRedis } from './redis'
 
 const DEFAULT_STREAM = 'vidana:analysis:queue'
 const DEFAULT_GROUP = 'vidana-workers'
+const DEFAULT_DELAYED = 'vidana:analysis:delayed'
 const DEFAULT_ACTIVE_TASK_LIMIT = 3
 
 export interface EnqueueAnalysisInput {
@@ -14,6 +15,7 @@ export function queueNames() {
   return {
     stream: process.env.ANALYSIS_QUEUE_STREAM || DEFAULT_STREAM,
     group: process.env.ANALYSIS_QUEUE_GROUP || DEFAULT_GROUP,
+    delayed: process.env.ANALYSIS_QUEUE_DELAYED || DEFAULT_DELAYED,
   }
 }
 
@@ -36,10 +38,7 @@ export async function enqueueAnalysis(input: EnqueueAnalysisInput): Promise<stri
   )
 }
 
-export function enqueueAnalysisAfter(input: EnqueueAnalysisInput, delayMs: number): ReturnType<typeof setTimeout> {
-  return setTimeout(() => {
-    enqueueAnalysis(input).catch(err => {
-      console.error('Failed to enqueue delayed analysis', err)
-    })
-  }, delayMs)
+export async function enqueueAnalysisAfter(input: EnqueueAnalysisInput, delayMs: number): Promise<number> {
+  const score = Date.now() + delayMs
+  return getRedis().zadd(queueNames().delayed, score, JSON.stringify(input))
 }

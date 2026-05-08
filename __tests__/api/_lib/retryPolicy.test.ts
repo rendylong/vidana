@@ -5,6 +5,9 @@ describe('analysis retry policy', () => {
   it.each([
     ['Mimo API error 429'],
     ['Mimo API error 500'],
+    ['Mimo API error 502'],
+    ['Mimo API error 503'],
+    ['Mimo API error 504'],
     ['failed to download url data'],
     ['empty response'],
     [new DOMException('The operation timed out.', 'AbortError')],
