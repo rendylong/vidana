@@ -14,12 +14,12 @@ export default function CliPage() {
     <div className="h-full overflow-y-auto bg-zinc-50">
       <div className="mx-auto max-w-5xl px-5 py-8">
         <section className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Vidana CLI</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Ovidly CLI</p>
           <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-tight text-zinc-950">
             把视频分析接进你的 Agent 工作流
           </h1>
           <p className="mt-4 max-w-2xl text-sm leading-7 text-zinc-600">
-            CLI 版 Vidana 调用线上分析服务，默认输出 Markdown。适合放进 Claude Code、Codex 或团队自己的自动化脚本里。
+            CLI 版 Ovidly 调用线上分析服务，默认输出 Markdown。适合放进 Claude Code、Codex 或团队自己的自动化脚本里。
           </p>
           <Link
             to="/api-keys"

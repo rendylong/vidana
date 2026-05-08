@@ -17,7 +17,7 @@ function usage() {
   vidana analyze <video-path> --audience <target audience> --platform <platform> [--context <background>]
 
 Environment:
-  VIDANA_API_KEY       Required API key from Vidana Web
+  VIDANA_API_KEY       Required API key from Ovidly Web
   VIDANA_API_BASE_URL  Optional service URL override for development
 `
 }
@@ -51,7 +51,7 @@ function validate(options, env) {
   if (!options.videoPath) throw new Error('Missing video path.')
   if (!options.audience.trim()) throw new Error('Missing required --audience.')
   if (!options.platform.trim()) throw new Error('Missing required --platform.')
-  if (!env.VIDANA_API_KEY) throw new Error('Missing VIDANA_API_KEY. Create an API key in Vidana Web and export it first.')
+  if (!env.VIDANA_API_KEY) throw new Error('Missing VIDANA_API_KEY. Create an API key in Ovidly Web and export it first.')
   if (!fs.existsSync(options.videoPath)) throw new Error(`Video file not found: ${options.videoPath}`)
 }
 
@@ -72,8 +72,8 @@ async function analyze(options, env, io) {
   })
 
   const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(data.error || `Vidana API returned HTTP ${response.status}`)
-  if (!data.markdown) throw new Error('Vidana API did not return Markdown.')
+  if (!response.ok) throw new Error(data.error || `Ovidly API returned HTTP ${response.status}`)
+  if (!data.markdown) throw new Error('Ovidly API did not return Markdown.')
   io.stdout.write(data.markdown)
 }
 

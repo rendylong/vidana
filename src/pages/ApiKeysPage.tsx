@@ -105,7 +105,7 @@ export default function ApiKeysPage() {
       <div className="mx-auto max-w-5xl px-5 py-8">
         <div className="flex flex-col gap-3 border-b border-zinc-200 pb-6 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Vidana API Keys</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Ovidly API Keys</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-zinc-950">管理 CLI 和 Agent 使用的 Key</h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-600">
               创建后只显示一次完整密钥。删除会立即让对应 CLI 或 Agent 调用失效。

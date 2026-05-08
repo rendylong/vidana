@@ -300,6 +300,7 @@ export default function AgentPage() {
   const [error, setError] = useState('')
   const [activeAnalysis, setActiveAnalysis] = useState<Analysis | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false)
 
   const isWorking = ['uploading', 'preparing', 'analyzing', 'finalizing'].includes(progress)
   const selectedFileName = file?.name || uploadedFileName
@@ -390,6 +391,7 @@ export default function AgentPage() {
     setProgress('idle')
     setError('')
     setActiveAnalysis(null)
+    setMobileHistoryOpen(false)
     navigate('/')
   }
 
@@ -661,6 +663,11 @@ export default function AgentPage() {
     if (id === analysisId) resetWorkspace()
   }
 
+  const openHistoryAnalysis = (analysisId: string) => {
+    setMobileHistoryOpen(false)
+    navigate(`/analysis/${analysisId}`)
+  }
+
   const briefStats = useMemo(() => {
     const completed = analyses.filter(item => item.status === 'completed').length
     const avgScore = analyses.length
@@ -793,7 +800,123 @@ export default function AgentPage() {
         )}
       </aside>
 
+      {mobileHistoryOpen && (
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <button
+            type="button"
+            className="absolute inset-0 bg-zinc-950/35"
+            aria-label="关闭历史记录"
+            onClick={() => setMobileHistoryOpen(false)}
+          />
+          <div className="absolute inset-x-3 top-3 max-h-[calc(100vh-24px)] overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-[0_24px_80px_-35px_rgba(24,24,27,0.45)]">
+            <div className="border-b border-zinc-200 p-4">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={resetWorkspace}
+                  className="flex min-w-0 flex-1 items-center justify-between rounded-xl bg-zinc-950 px-3.5 py-3 text-sm font-medium text-white transition active:scale-[0.98]"
+                >
+                  新建分析
+                  <ArrowRight size={16} weight="bold" />
+                </button>
+                <button
+                  onClick={() => setMobileHistoryOpen(false)}
+                  className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-500 transition active:scale-[0.98]"
+                  aria-label="关闭历史记录"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="rounded-xl bg-zinc-100 px-3 py-2">
+                  <p className="font-mono text-lg tracking-tight text-zinc-900">{briefStats.completed}</p>
+                  <p className="text-[11px] text-zinc-500">已完成</p>
+                </div>
+                <div className="rounded-xl bg-zinc-100 px-3 py-2">
+                  <p className="font-mono text-lg tracking-tight text-zinc-900">{briefStats.avgScore || '-'}</p>
+                  <p className="text-[11px] text-zinc-500">均分</p>
+                </div>
+              </div>
+            </div>
+            <div className="max-h-[min(70vh,560px)] overflow-y-auto p-2">
+              {analyses.length === 0 ? (
+                <div className="flex min-h-44 flex-col items-center justify-center px-8 text-center">
+                  <ClockCounterClockwise size={20} className="text-zinc-300" />
+                  <p className="mt-3 text-xs text-zinc-400">暂无历史分析</p>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {analyses.map(analysis => (
+                    <button
+                      key={analysis.id}
+                      onClick={() => openHistoryAnalysis(analysis.id)}
+                      className={`group flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${
+                        id === analysis.id ? 'bg-zinc-950 text-white' : 'text-zinc-600 active:bg-zinc-100'
+                      }`}
+                    >
+                      <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg ${
+                        id === analysis.id ? 'bg-white/10' : 'bg-zinc-50'
+                      }`}>
+                        <FileVideo size={16} weight="fill" className={id === analysis.id ? 'text-white' : 'text-zinc-400'} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{resultTitle(analysis)}</p>
+                        <p className={`mt-0.5 text-[11px] ${id === analysis.id ? 'text-white/55' : 'text-zinc-400'}`}>
+                          {formatDate(analysis.created_at)}
+                        </p>
+                      </div>
+                      {analysis.score !== null && (
+                        <span className={`font-mono text-xs font-semibold ${id === analysis.id ? 'text-white' : scoreTone(analysis.score).text}`}>
+                          {analysis.score}
+                        </span>
+                      )}
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={e => handleDeleteHistory(e, analysis.id)}
+                        className={`rounded-md p-2 transition ${
+                          id === analysis.id ? 'text-white/50 active:bg-white/10 active:text-white' : 'text-zinc-300 active:bg-red-50 active:text-red-500'
+                        }`}
+                      >
+                        <Trash size={14} />
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="min-h-0 overflow-y-auto">
+        <div className="sticky top-0 z-30 flex items-center gap-2 border-b border-zinc-200/80 bg-[#f7f8f5]/95 px-4 py-3 backdrop-blur lg:hidden">
+          <button
+            onClick={() => setMobileHistoryOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-600 shadow-sm active:scale-[0.98]"
+            aria-label="打开历史记录"
+          >
+            <ClockCounterClockwise size={17} />
+          </button>
+          <button
+            onClick={resetWorkspace}
+            className="flex h-9 w-9 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-600 shadow-sm active:scale-[0.98]"
+            aria-label="新建分析"
+          >
+            <ArrowRight size={16} />
+          </button>
+          <div className="min-w-0 flex-1">
+            <p className="flex min-w-0 items-baseline gap-2">
+              <span className="truncate text-sm font-semibold text-zinc-950">Ovidly</span>
+              <span className="shrink-0 text-[10px] font-medium text-zinc-400">多模态视频分析 Agent</span>
+            </p>
+            <p className="text-[11px] text-zinc-500">{briefStats.completed} 条已完成</p>
+          </div>
+          {activeAnalysis && (
+            <span className="max-w-[42vw] truncate rounded-lg bg-zinc-100 px-2 py-1 text-[11px] text-zinc-500">
+              {resultTitle(activeAnalysis)}
+            </span>
+          )}
+        </div>
         <div className="mx-auto grid w-full max-w-[1400px] gap-5 px-4 py-5 md:px-6 lg:grid-cols-[minmax(360px,480px)_minmax(0,1fr)] lg:py-7">
           <section className="space-y-5">
             <div className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-[0_24px_80px_-60px_rgba(24,24,27,0.5)]">

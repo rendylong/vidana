@@ -10,7 +10,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const supabase = getSupabase()
-    const { data, error } = await supabase.from('users').select('id, name, avatar_url').eq('id', auth.userId).single()
+    const { data, error } = await supabase.from('users').select('id, name, avatar_url, analysis_credits').eq('id', auth.userId).single()
     if (error || !data) return res.status(401).json({ error: 'Unauthorized' })
 
     return res.json({ user: data })
