@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   getBlockingRedis: vi.fn(),
   getAnalysisById: vi.fn(),
   claimAnalysisForProcessing: vi.fn(),
+  claimStaleAnalysisForProcessing: vi.fn(),
   updateAnalysis: vi.fn(),
   executeAnalysis: vi.fn(),
   enqueueAnalysisAfter: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock('../../api/_lib/redis', () => ({
 vi.mock('../../api/_lib/supabase', () => ({
   getAnalysisById: mocks.getAnalysisById,
   claimAnalysisForProcessing: mocks.claimAnalysisForProcessing,
+  claimStaleAnalysisForProcessing: mocks.claimStaleAnalysisForProcessing,
   updateAnalysis: mocks.updateAnalysis,
 }))
 
@@ -87,6 +89,7 @@ describe('analysis worker', () => {
     vi.unstubAllEnvs()
     mocks.promoteDueDelayedAnalyses.mockResolvedValue(0)
     mocks.claimAnalysisForProcessing.mockResolvedValue(true)
+    mocks.claimStaleAnalysisForProcessing.mockResolvedValue(true)
     mocks.updateAnalysis.mockResolvedValue(undefined)
     mocks.executeAnalysis.mockResolvedValue({})
     mocks.enqueueAnalysisAfter.mockResolvedValue(1)
@@ -219,7 +222,32 @@ describe('analysis worker', () => {
     expect(redis.xack).toHaveBeenCalledWith('vidana:analysis:queue', 'vidana-workers', '1746688800000-0')
   })
 
-  it('recovers one stale pending message before reading new messages', async () => {
+  it('does not execute or xack a pending processing analysis when the DB lock is fresh', async () => {
+    const redis = {
+      xautoclaim: vi.fn().mockResolvedValue(['0-0', [['1746688700000-0', ['analysisId', 'analysis-1']]]]),
+      xreadgroup: vi.fn().mockResolvedValue(streamMessage()),
+      xack: vi.fn().mockResolvedValue(1),
+    }
+    mocks.getBlockingRedis.mockReturnValue(redis)
+    mocks.getAnalysisById.mockResolvedValue(analysis({ status: 'processing', locked_by: 'live-worker' }))
+    mocks.claimStaleAnalysisForProcessing.mockResolvedValue(false)
+
+    const { processOneBatch } = await import('../../worker/analysisWorker')
+    const result = await processOneBatch({ consumerName: 'worker-1' })
+
+    expect(result).toEqual({ processed: 0 })
+    expect(mocks.claimStaleAnalysisForProcessing).toHaveBeenCalledWith(
+      'analysis-1',
+      'worker-1',
+      expect.any(String),
+    )
+    expect(mocks.claimAnalysisForProcessing).not.toHaveBeenCalled()
+    expect(mocks.executeAnalysis).not.toHaveBeenCalled()
+    expect(redis.xack).not.toHaveBeenCalled()
+    expect(redis.xreadgroup).not.toHaveBeenCalled()
+  })
+
+  it('recovers one DB-stale pending processing message before reading new messages', async () => {
     const redis = {
       xautoclaim: vi.fn().mockResolvedValue(['0-0', [['1746688700000-0', ['analysisId', 'analysis-1']]]]),
       xreadgroup: vi.fn().mockResolvedValue(streamMessage()),
@@ -243,6 +271,11 @@ describe('analysis worker', () => {
     )
     expect(redis.xreadgroup).not.toHaveBeenCalled()
     expect(mocks.claimAnalysisForProcessing).not.toHaveBeenCalled()
+    expect(mocks.claimStaleAnalysisForProcessing).toHaveBeenCalledWith(
+      'analysis-1',
+      'worker-1',
+      expect.any(String),
+    )
     expect(mocks.executeAnalysis).toHaveBeenCalledWith(expect.objectContaining({
       analysisId: 'analysis-1',
       lockedBy: 'worker-1',

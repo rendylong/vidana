@@ -3,11 +3,12 @@ import { enqueueAnalysisAfter, promoteDueDelayedAnalyses, queueNames } from '../
 import { executeAnalysis } from '../api/_lib/analysisExecution'
 import { getBlockingRedis } from '../api/_lib/redis'
 import { backoffMsForAttempt, errorMessage, isRetryableAnalysisError } from '../api/_lib/retryPolicy'
-import { claimAnalysisForProcessing, getAnalysisById, updateAnalysis } from '../api/_lib/supabase'
+import { claimAnalysisForProcessing, claimStaleAnalysisForProcessing, getAnalysisById, updateAnalysis } from '../api/_lib/supabase'
 import type { Analysis } from '../api/_lib/types'
 
 const DEFAULT_BLOCK_MS = 5_000
 const DEFAULT_PENDING_IDLE_MS = 60_000
+const DEFAULT_STALE_LOCK_MS = 15 * 60_000
 const DEFAULT_CONSUMER_PREFIX = 'analysis-worker'
 
 type StreamFields = string[]
@@ -18,6 +19,7 @@ export interface ProcessOneBatchOptions {
   consumerName?: string
   blockMs?: number
   pendingIdleMs?: number
+  staleLockMs?: number
 }
 
 export interface ProcessOneBatchResult {
@@ -35,6 +37,11 @@ function publicOrigin(): string | null {
 function pendingIdleMs(): number {
   const parsed = Number.parseInt(process.env.ANALYSIS_PENDING_IDLE_MS || '', 10)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_PENDING_IDLE_MS
+}
+
+function staleLockMs(): number {
+  const parsed = Number.parseInt(process.env.ANALYSIS_STALE_LOCK_MS || '', 10)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_STALE_LOCK_MS
 }
 
 export function parseFields(fields: StreamFields): Record<string, string> {
@@ -103,35 +110,42 @@ async function failAnalysis(analysis: Analysis, err: unknown, nextAttempt: numbe
   })
 }
 
-async function handleMessage(messageId: string, fields: StreamFields, workerId: string, fromPending = false): Promise<void> {
+async function handleMessage(
+  messageId: string,
+  fields: StreamFields,
+  workerId: string,
+  fromPending = false,
+  staleBeforeIso?: string,
+): Promise<boolean> {
   const payload = parseFields(fields)
   const analysisId = payload.analysisId
   if (!analysisId) {
     await ack(messageId)
-    return
+    return true
   }
 
   const analysis = await getAnalysisById(analysisId)
   if (!analysis || isTerminalAnalysis(analysis)) {
     await ack(messageId)
-    return
+    return true
   }
 
   if (fromPending && analysis.status === 'processing') {
-    await updateAnalysis(analysis.id, {
-      status: 'processing',
-      locked_by: workerId,
-      locked_at: new Date().toISOString(),
-    })
+    const claimed = await claimStaleAnalysisForProcessing(
+      analysis.id,
+      workerId,
+      staleBeforeIso || new Date(Date.now() - staleLockMs()).toISOString(),
+    )
+    if (!claimed) return false
   } else if (analysis.status === 'queued') {
     const claimed = await claimAnalysisForProcessing(analysis.id, workerId)
     if (!claimed) {
       await ack(messageId)
-      return
+      return true
     }
   } else {
     await ack(messageId)
-    return
+    return true
   }
 
   try {
@@ -155,9 +169,10 @@ async function handleMessage(messageId: string, fields: StreamFields, workerId: 
   }
 
   await ack(messageId)
+  return true
 }
 
-async function processPendingBatch(workerId: string, minIdleMs: number): Promise<boolean> {
+async function processPendingBatch(workerId: string, minIdleMs: number, staleBeforeIso: string): Promise<number | null> {
   const redis = getBlockingRedis()
   const names = queueNames()
   const response = await redis.xautoclaim(
@@ -171,10 +186,9 @@ async function processPendingBatch(workerId: string, minIdleMs: number): Promise
   ) as [string, StreamMessage[]]
 
   const message = response?.[1]?.[0]
-  if (!message) return false
+  if (!message) return null
 
-  await handleMessage(message[0], message[1], workerId, true)
-  return true
+  return await handleMessage(message[0], message[1], workerId, true, staleBeforeIso) ? 1 : 0
 }
 
 export async function ensureGroup(): Promise<void> {
@@ -193,10 +207,10 @@ export async function processOneBatch(options: ProcessOneBatchOptions = {}): Pro
   const redis = getBlockingRedis()
   const names = queueNames()
   const workerId = options.consumerName || consumerName()
+  const staleBeforeIso = new Date(Date.now() - (options.staleLockMs ?? staleLockMs())).toISOString()
 
-  if (await processPendingBatch(workerId, options.pendingIdleMs ?? pendingIdleMs())) {
-    return { processed: 1 }
-  }
+  const pendingResult = await processPendingBatch(workerId, options.pendingIdleMs ?? pendingIdleMs(), staleBeforeIso)
+  if (pendingResult !== null) return { processed: pendingResult }
 
   const response = await redis.xreadgroup(
     'GROUP',
@@ -214,8 +228,7 @@ export async function processOneBatch(options: ProcessOneBatchOptions = {}): Pro
   const message = response?.[0]?.[1]?.[0]
   if (!message) return { processed: 0 }
 
-  await handleMessage(message[0], message[1], workerId)
-  return { processed: 1 }
+  return { processed: await handleMessage(message[0], message[1], workerId) ? 1 : 0 }
 }
 
 export async function main(): Promise<void> {

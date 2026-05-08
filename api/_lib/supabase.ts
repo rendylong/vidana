@@ -124,6 +124,27 @@ export async function claimAnalysisForProcessing(id: string, workerId: string): 
   return Boolean(data)
 }
 
+export async function claimStaleAnalysisForProcessing(id: string, workerId: string, staleBeforeIso: string): Promise<boolean> {
+  const supabase = getSupabase()
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('analyses')
+    .update({
+      status: 'processing',
+      locked_by: workerId,
+      locked_at: now,
+      started_at: now,
+    })
+    .eq('id', id)
+    .eq('status', 'processing')
+    .lt('locked_at', staleBeforeIso)
+    .select('id')
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to claim stale analysis: ${error.message}`)
+  return Boolean(data)
+}
+
 export async function countActiveAnalysisTasks(userId: string): Promise<number> {
   const supabase = getSupabase()
   const { data, error } = await supabase.rpc('count_active_analysis_tasks', { p_user_id: userId })
