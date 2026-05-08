@@ -2,7 +2,7 @@ import { buildAnalysisRequest, callMimoAPI, parseSSEStream } from './mimo'
 import { buildAnalysisPrompt } from './prompts'
 import { chargeAnalysisCredit, recordAnalysisFailure } from './credits'
 import { getSignedUrl, getVideoDataUrl, updateAnalysis } from './supabase'
-import type { AnalysisReport, GlobalEdit, TimelineEdit } from './types'
+import type { Analysis, AnalysisReport, GlobalEdit, TimelineEdit } from './types'
 import { buildVideoProxyUrl } from './videoAccess'
 
 export type AnalysisSourceMode = 'signed-url' | 'proxy-url' | 'data-url'
@@ -147,12 +147,14 @@ export async function executeAnalysis(input: ExecuteAnalysisInput): Promise<Anal
   const errors: string[] = []
 
   try {
-    await updateAnalysis(input.analysisId, {
+    const processingUpdate: Partial<Analysis> = {
       status: 'processing',
       started_at: new Date().toISOString(),
-      locked_by: input.lockedBy || null,
       locked_at: new Date().toISOString(),
-    })
+    }
+    if (input.lockedBy) processingUpdate.locked_by = input.lockedBy
+
+    await updateAnalysis(input.analysisId, processingUpdate)
 
     const prompt = buildAnalysisPrompt(input)
 
@@ -196,7 +198,6 @@ export async function executeAnalysis(input: ExecuteAnalysisInput): Promise<Anal
 
     if (!fullResult) {
       const message = `Mimo did not return analysis content. Attempts: ${errors.join(' | ')}`
-      await recordAnalysisFailure(input.analysisId, new Error(message))
       throw new Error(message)
     }
 

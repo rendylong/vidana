@@ -88,11 +88,13 @@ describe('executeAnalysis', () => {
 
     const output = await executeAnalysis(executionInput())
 
+    const processingUpdate = mocks.updateAnalysis.mock.calls[0][1]
     expect(mocks.updateAnalysis).toHaveBeenCalledWith('analysis-1', expect.objectContaining({
       status: 'processing',
       started_at: expect.any(String),
       locked_at: expect.any(String),
     }))
+    expect(processingUpdate).not.toHaveProperty('locked_by')
     expect(mocks.updateAnalysis).toHaveBeenCalledWith('analysis-1', expect.objectContaining({
       status: 'completed',
       score: 90,
@@ -107,6 +109,17 @@ describe('executeAnalysis', () => {
       analysisId: 'analysis-1',
       sourceMode: 'signed-url',
       report: validReport,
+    }))
+  })
+
+  it('includes lock owner in processing update only when provided', async () => {
+    mocks.sseChunks.push([JSON.stringify(validReport)])
+
+    await executeAnalysis(executionInput({ lockedBy: 'worker-1' }))
+
+    expect(mocks.updateAnalysis).toHaveBeenCalledWith('analysis-1', expect.objectContaining({
+      status: 'processing',
+      locked_by: 'worker-1',
     }))
   })
 
@@ -159,6 +172,7 @@ describe('executeAnalysis', () => {
     await expect(executeAnalysis(executionInput())).rejects.toThrow('Mimo did not return analysis content')
 
     expect(mocks.recordAnalysisFailure).toHaveBeenCalledWith('analysis-1', expect.any(Error))
+    expect(mocks.recordAnalysisFailure).toHaveBeenCalledTimes(1)
     expect(mocks.chargeAnalysisCredit).not.toHaveBeenCalled()
   })
 })
