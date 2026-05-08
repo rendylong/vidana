@@ -7,10 +7,10 @@ const {
   getSupabaseMock,
   supabaseFromMock,
   supabaseUploadMock,
-  runAnalysisPipelineMock,
-  formatAnalysisMarkdownMock,
+  submitAnalysisJobMock,
   assertUserHasCreditsMock,
   InsufficientCreditsErrorMock,
+  ActiveAnalysisLimitErrorMock,
 } = vi.hoisted(() => {
   const supabaseUploadMock = vi.fn()
   const supabaseFromMock = vi.fn(() => ({ upload: supabaseUploadMock }))
@@ -23,12 +23,16 @@ const {
     })),
     supabaseFromMock,
     supabaseUploadMock,
-    runAnalysisPipelineMock: vi.fn(),
-    formatAnalysisMarkdownMock: vi.fn(),
+    submitAnalysisJobMock: vi.fn(),
     assertUserHasCreditsMock: vi.fn(),
     InsufficientCreditsErrorMock: class InsufficientCreditsError extends Error {
       constructor() {
         super('可用分析次数不足，请联系管理员增加额度。')
+      }
+    },
+    ActiveAnalysisLimitErrorMock: class ActiveAnalysisLimitError extends Error {
+      constructor() {
+        super('当前排队或分析中的任务已达到 2 个，请等待已有任务完成后再提交。')
       }
     },
   }
@@ -42,12 +46,9 @@ vi.mock('../../../api/_lib/supabase', () => ({
   getSupabase: getSupabaseMock,
 }))
 
-vi.mock('../../../api/_lib/analysisPipeline', () => ({
-  runAnalysisPipeline: runAnalysisPipelineMock,
-}))
-
-vi.mock('../../../api/_lib/markdown', () => ({
-  formatAnalysisMarkdown: formatAnalysisMarkdownMock,
+vi.mock('../../../api/_lib/analysisSubmission', () => ({
+  submitAnalysisJob: submitAnalysisJobMock,
+  ActiveAnalysisLimitError: ActiveAnalysisLimitErrorMock,
 }))
 
 vi.mock('../../../api/_lib/credits', () => ({
@@ -135,8 +136,8 @@ describe('public analyze API', () => {
     getSupabaseMock.mockClear()
     supabaseFromMock.mockClear()
     supabaseUploadMock.mockReset()
-    runAnalysisPipelineMock.mockReset()
-    formatAnalysisMarkdownMock.mockReset()
+    submitAnalysisJobMock.mockReset()
+    submitAnalysisJobMock.mockResolvedValue({ analysisId: 'analysis-1' })
     assertUserHasCreditsMock.mockReset()
     assertUserHasCreditsMock.mockResolvedValue(undefined)
   })
@@ -210,7 +211,7 @@ describe('public analyze API', () => {
     expect(response.statusCode).toBe(402)
     expect(response.jsonBody).toEqual({ error: '可用分析次数不足，请联系管理员增加额度。' })
     expect(pipeMock).not.toHaveBeenCalled()
-    expect(runAnalysisPipelineMock).not.toHaveBeenCalled()
+    expect(submitAnalysisJobMock).not.toHaveBeenCalled()
   })
 
   it('rejects unsupported extension and mime multipart uploads', async () => {
@@ -225,17 +226,12 @@ describe('public analyze API', () => {
     expect(response.statusCode).toBe(400)
     expect(response.jsonBody).toEqual({ error: 'Unsupported video format' })
     expect(supabaseUploadMock).not.toHaveBeenCalled()
-    expect(runAnalysisPipelineMock).not.toHaveBeenCalled()
+    expect(submitAnalysisJobMock).not.toHaveBeenCalled()
   })
 
-  it('uploads multipart video, runs analysis, formats markdown, and returns markdown', async () => {
+  it('uploads multipart video, submits a queued analysis job, and returns queued status', async () => {
     verifyBearerApiKeyMock.mockResolvedValue({ userId: 'user-1' })
     supabaseUploadMock.mockResolvedValue({ error: null })
-    runAnalysisPipelineMock.mockResolvedValue({
-      analysisId: 'analysis-1',
-      report: { overallScore: 8, summary: 'Strong video' },
-    })
-    formatAnalysisMarkdownMock.mockReturnValue('# Analysis\n\nStrong video')
     const response = createResponse()
 
     await handler(createMultipartRequest(), response.res as never)
@@ -243,26 +239,31 @@ describe('public analyze API', () => {
     expect(supabaseFromMock).toHaveBeenCalledWith('videos')
     expect(supabaseUploadMock).toHaveBeenCalledOnce()
     expect(supabaseUploadMock.mock.calls[0][2]).toMatchObject({ contentType: 'video/mp4', upsert: false })
-    expect(runAnalysisPipelineMock).toHaveBeenCalledWith(expect.objectContaining({
+    expect(submitAnalysisJobMock).toHaveBeenCalledWith(expect.objectContaining({
       userId: 'user-1',
       storagePath: expect.stringMatching(/^user-1\/\d+-[a-f0-9]+\.mp4$/),
       targetAudience: 'Product marketers',
       platform: 'LinkedIn',
       context: 'Launch teaser',
     }))
-    expect(formatAnalysisMarkdownMock).toHaveBeenCalledWith(
-      { overallScore: 8, summary: 'Strong video' },
-      expect.objectContaining({
-        fileName: 'clip.mp4',
-        targetAudience: 'Product marketers',
-        platform: 'LinkedIn',
-      }),
-    )
-    expect(response.statusCode).toBe(200)
+    expect(response.statusCode).toBe(202)
     expect(response.jsonBody).toEqual({
       analysisId: 'analysis-1',
-      markdown: '# Analysis\n\nStrong video',
-      report: { overallScore: 8, summary: 'Strong video' },
+      status: 'queued',
+    })
+  })
+
+  it('returns 429 when the active analysis limit is reached', async () => {
+    verifyBearerApiKeyMock.mockResolvedValue({ userId: 'user-1' })
+    supabaseUploadMock.mockResolvedValue({ error: null })
+    submitAnalysisJobMock.mockRejectedValue(new ActiveAnalysisLimitErrorMock())
+    const response = createResponse()
+
+    await handler(createMultipartRequest(), response.res as never)
+
+    expect(response.statusCode).toBe(429)
+    expect(response.jsonBody).toEqual({
+      error: '当前排队或分析中的任务已达到 2 个，请等待已有任务完成后再提交。',
     })
   })
 
@@ -285,7 +286,7 @@ describe('public analyze API', () => {
     expect(response.jsonBody).toEqual({ error: 'video file exceeds 50MB limit' })
     expect(pipeMock).not.toHaveBeenCalled()
     expect(supabaseUploadMock).not.toHaveBeenCalled()
-    expect(runAnalysisPipelineMock).not.toHaveBeenCalled()
+    expect(submitAnalysisJobMock).not.toHaveBeenCalled()
   })
 
   it('rejects multipart requests with too many fields', async () => {
@@ -319,6 +320,6 @@ describe('public analyze API', () => {
     expect(response.statusCode).toBe(400)
     expect(response.jsonBody).toEqual({ error: 'Too many form fields' })
     expect(supabaseUploadMock).not.toHaveBeenCalled()
-    expect(runAnalysisPipelineMock).not.toHaveBeenCalled()
+    expect(submitAnalysisJobMock).not.toHaveBeenCalled()
   })
 })

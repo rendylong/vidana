@@ -3,6 +3,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const DEFAULT_BASE_URL = 'https://vidana.vercel.app'
+const POLL_INTERVAL_MS = 3000
+const POLL_TIMEOUT_MS = 10 * 60 * 1000
 
 const VIDEO_MIME_TYPES = {
   mp4: 'video/mp4',
@@ -17,7 +19,7 @@ function usage() {
   vidana analyze <video-path> --audience <target audience> --platform <platform> [--context <background>]
 
 Environment:
-  VIDANA_API_KEY       Required API key from Ovidly Web
+  VIDANA_API_KEY       Required API key from Vidana Web
   VIDANA_API_BASE_URL  Optional service URL override for development
 `
 }
@@ -51,8 +53,42 @@ function validate(options, env) {
   if (!options.videoPath) throw new Error('Missing video path.')
   if (!options.audience.trim()) throw new Error('Missing required --audience.')
   if (!options.platform.trim()) throw new Error('Missing required --platform.')
-  if (!env.VIDANA_API_KEY) throw new Error('Missing VIDANA_API_KEY. Create an API key in Ovidly Web and export it first.')
+  if (!env.VIDANA_API_KEY) throw new Error('Missing VIDANA_API_KEY. Create an API key in Vidana Web and export it first.')
   if (!fs.existsSync(options.videoPath)) throw new Error(`Video file not found: ${options.videoPath}`)
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function readJson(response) {
+  return response.json().catch(() => ({}))
+}
+
+async function pollAnalysis({ baseUrl, apiKey, analysisId }) {
+  const deadline = Date.now() + POLL_TIMEOUT_MS
+
+  while (Date.now() <= deadline) {
+    const response = await fetch(`${baseUrl}/api/public/analyses/${encodeURIComponent(analysisId)}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${apiKey}` },
+    })
+    const data = await readJson(response)
+
+    if (!response.ok) throw new Error(data.error || `Vidana API returned HTTP ${response.status}`)
+    if (data.markdown) return data.markdown
+    if (data.status === 'completed' && !data.markdown) {
+      throw new Error('Vidana API completed but did not return Markdown.')
+    }
+    if (data.status === 'failed' || data.status === 'canceled') {
+      throw new Error(data.error || `Vidana analysis ${data.status}.`)
+    }
+
+    if (Date.now() >= deadline) break
+    await delay(POLL_INTERVAL_MS)
+  }
+
+  throw new Error('Vidana analysis timed out after 10 minutes.')
 }
 
 async function analyze(options, env, io) {
@@ -71,10 +107,20 @@ async function analyze(options, env, io) {
     body: form,
   })
 
-  const data = await response.json().catch(() => ({}))
-  if (!response.ok) throw new Error(data.error || `Ovidly API returned HTTP ${response.status}`)
-  if (!data.markdown) throw new Error('Ovidly API did not return Markdown.')
-  io.stdout.write(data.markdown)
+  const data = await readJson(response)
+  if (!response.ok) throw new Error(data.error || `Vidana API returned HTTP ${response.status}`)
+  if (data.markdown) {
+    io.stdout.write(data.markdown)
+    return
+  }
+  if (!data.analysisId) throw new Error('Vidana API did not return an analysis id or Markdown.')
+
+  const markdown = await pollAnalysis({
+    baseUrl,
+    apiKey: env.VIDANA_API_KEY,
+    analysisId: data.analysisId,
+  })
+  io.stdout.write(markdown)
 }
 
 export async function main(argv = process.argv.slice(2), env = process.env, io = process) {
