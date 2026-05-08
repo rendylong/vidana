@@ -17,7 +17,10 @@ export function isRetryableAnalysisError(err: unknown): boolean {
     message.includes('mimo api error 429') ||
     message.includes('mimo api error 500') ||
     message.includes('failed to download url data') ||
-    message.includes('empty response')
+    message.includes('empty response') ||
+    message.includes('network') ||
+    message.includes('timeout') ||
+    message.includes('timed out')
   )
 }
 

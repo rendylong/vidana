@@ -8,6 +8,9 @@ describe('analysis retry policy', () => {
     ['failed to download url data'],
     ['empty response'],
     [new DOMException('The operation timed out.', 'AbortError')],
+    [new Error('network error')],
+    [new Error('timeout')],
+    [new Error('request timed out')],
   ])('retries transient analysis errors: %s', err => {
     expect(isRetryableAnalysisError(err)).toBe(true)
   })
