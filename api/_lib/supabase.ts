@@ -92,12 +92,107 @@ export async function createAnalysis(userId: string, videoUrl: string, opts: {
 
 export async function updateAnalysis(id: string, updates: Partial<Analysis>): Promise<void> {
   const supabase = getSupabase()
-  await supabase.from('analyses').update(updates).eq('id', id)
+  const { error } = await supabase.from('analyses').update(updates).eq('id', id)
+  if (error) throw new Error(`Failed to update analysis: ${error.message}`)
+}
+
+export async function getAnalysisById(id: string): Promise<Analysis | null> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase.from('analyses').select('*').eq('id', id).maybeSingle()
+  if (error) throw new Error(`Failed to get analysis: ${error.message}`)
+  return data as Analysis | null
+}
+
+export async function claimAnalysisForProcessing(id: string, workerId: string): Promise<boolean> {
+  const supabase = getSupabase()
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('analyses')
+    .update({
+      status: 'processing',
+      locked_by: workerId,
+      locked_at: now,
+      started_at: now,
+      next_retry_at: null,
+    })
+    .eq('id', id)
+    .eq('status', 'queued')
+    .select('id')
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to claim analysis: ${error.message}`)
+  return Boolean(data)
+}
+
+export async function claimStaleAnalysisForProcessing(id: string, workerId: string, staleBeforeIso: string): Promise<boolean> {
+  const supabase = getSupabase()
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('analyses')
+    .update({
+      status: 'processing',
+      locked_by: workerId,
+      locked_at: now,
+      started_at: now,
+    })
+    .eq('id', id)
+    .eq('status', 'processing')
+    .lt('locked_at', staleBeforeIso)
+    .select('id')
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to claim stale analysis: ${error.message}`)
+  return Boolean(data)
+}
+
+export async function countActiveAnalysisTasks(userId: string): Promise<number> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase.rpc('count_active_analysis_tasks', { p_user_id: userId })
+  if (error) throw new Error(`Failed to count active analysis tasks: ${error.message}`)
+  return Number(data || 0)
+}
+
+export interface CreateQueuedAnalysisJobInput {
+  userId: string
+  videoUrl: string
+  targetAudience?: string
+  platform?: string
+  context?: string
+  analysisType?: AnalysisType
+  activeLimit?: number
+}
+
+export async function createQueuedAnalysisJob(input: CreateQueuedAnalysisJobInput): Promise<Analysis> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase.rpc('create_queued_analysis_job', {
+    p_user_id: input.userId,
+    p_video_url: input.videoUrl,
+    p_target_audience: input.targetAudience ?? null,
+    p_platform: input.platform ?? null,
+    p_context: input.context ?? null,
+    p_analysis_type: input.analysisType || 'analysis',
+    p_active_limit: input.activeLimit ?? 3,
+  })
+  if (error || !data) throw new Error(`Failed to create queued analysis job: ${error?.message || 'empty response'}`)
+  return data as Analysis
 }
 
 export async function getAnalysis(id: string, userId: string): Promise<Analysis | null> {
   const supabase = getSupabase()
   const { data } = await supabase.from('analyses').select('*').eq('id', id).eq('user_id', userId).single()
+  return data as Analysis | null
+}
+
+export async function getAnalysisForUserStrict(id: string, userId: string): Promise<Analysis | null> {
+  const supabase = getSupabase()
+  const { data, error } = await supabase
+    .from('analyses')
+    .select('*')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (error) throw new Error(`Failed to get analysis: ${error.message}`)
   return data as Analysis | null
 }
 

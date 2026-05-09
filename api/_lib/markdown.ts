@@ -28,7 +28,7 @@ function globalEditLine(edit: GlobalEdit): string {
 
 export function formatAnalysisMarkdown(report: AnalysisReport, context: AnalysisMarkdownContext = {}): string {
   const lines = [
-    '# Ovidly 视频分析报告',
+    '# Vidana 视频分析报告',
     '',
     '## 基本信息',
     `- 目标用户：${context.targetAudience || '未指定'}`,

@@ -8,6 +8,14 @@ export interface User {
 }
 
 export type AnalysisType = 'analysis' | 'benchmark'
+export type AnalysisStatus =
+  | 'pending'
+  | 'analyzing'
+  | 'queued'
+  | 'processing'
+  | 'completed'
+  | 'failed'
+  | 'canceled'
 
 export interface Analysis {
   id: string
@@ -18,7 +26,7 @@ export interface Analysis {
   target_audience: string | null
   platform: string | null
   context: string | null
-  status: 'pending' | 'analyzing' | 'completed' | 'failed'
+  status: AnalysisStatus
   score: number | null
   raw_result: Record<string, unknown> | null
   report: AnalysisReport | BenchmarkReport | null
@@ -29,6 +37,14 @@ export interface Analysis {
   credit_charged_at: string | null
   created_at: string
   completed_at: string | null
+  queued_at: string | null
+  started_at: string | null
+  attempt_count: number
+  max_attempts: number
+  next_retry_at: string | null
+  locked_by: string | null
+  locked_at: string | null
+  source_mode: string | null
 }
 
 export type CreditTransactionSource = 'initial_grant' | 'admin_adjustment' | 'analysis_success'

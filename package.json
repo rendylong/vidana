@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite",
     "dev:full": "set -a; . ./.env.local; set +a; vercel dev --listen 5174",
+    "worker:analysis": "tsx worker/analysisWorker.ts",
     "start:server": "tsx server/index.ts",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
@@ -24,6 +25,7 @@
     "cookie-parser": "^1.4.7",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

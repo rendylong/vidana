@@ -2,9 +2,8 @@ import { randomBytes } from 'node:crypto'
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import Busboy from 'busboy'
 import { verifyBearerApiKey } from '../_lib/apiKeys'
-import { runAnalysisPipeline } from '../_lib/analysisPipeline'
+import { ActiveAnalysisLimitError, submitAnalysisJob } from '../_lib/analysisSubmission'
 import { assertUserHasCredits, InsufficientCreditsError } from '../_lib/credits'
-import { formatAnalysisMarkdown } from '../_lib/markdown'
 import { getSupabase } from '../_lib/supabase'
 
 const MAX_VIDEO_BYTES = 50 * 1024 * 1024
@@ -29,17 +28,6 @@ class MultipartParserError extends Error {}
 
 function normalizeHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value
-}
-
-function getConfiguredOrigin(): string | null {
-  const configuredOrigin = process.env.VIDANA_PUBLIC_ORIGIN || process.env.VITE_APP_URL || null
-  if (!configuredOrigin) return null
-
-  try {
-    return new URL(configuredOrigin).origin
-  } catch {
-    return null
-  }
 }
 
 function isMultipartContentType(contentType: string | undefined): boolean {
@@ -203,15 +191,8 @@ async function uploadVideo(userId: string, payload: MultipartPayload): Promise<s
   return storagePath
 }
 
-function isMimoEmptyContentError(message: string): boolean {
-  const normalized = message.toLowerCase()
-  return normalized.includes('mimo did not return analysis content')
-    || normalized.includes('mimo returned empty response')
-}
-
 function publicErrorMessage(err: unknown): string {
   if (!(err instanceof Error)) return 'Analysis failed'
-  if (isMimoEmptyContentError(err.message)) return err.message
   if (err.message.startsWith('Video upload failed:')) return 'Video upload failed'
   return 'Analysis failed'
 }
@@ -246,17 +227,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const storagePath = await uploadVideo(auth.userId, payload)
-    const output = await runAnalysisPipeline({
+    const { analysisId } = await submitAnalysisJob({
       userId: auth.userId,
       storagePath,
       targetAudience: payload.targetAudience,
       platform: payload.platform,
       context: payload.context,
-      origin: getConfiguredOrigin(),
     })
-    const markdown = formatAnalysisMarkdown(output.report, payload)
-    return res.json({ analysisId: output.analysisId, markdown, report: output.report })
+    return res.status(202).json({ analysisId, status: 'queued' })
   } catch (err) {
+    if (err instanceof ActiveAnalysisLimitError) {
+      return res.status(429).json({ error: err.message })
+    }
+
     console.error('Public analysis error:', err)
     return res.status(500).json({ error: publicErrorMessage(err) })
   }

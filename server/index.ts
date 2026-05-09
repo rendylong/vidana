@@ -35,6 +35,7 @@ const [
   { default: historyHandler },
   { default: historyByIdHandler },
   { default: publicAnalyzeHandler },
+  { default: publicAnalysisByIdHandler },
 ] = await Promise.all([
   import('../api/analyze'),
   import('../api/benchmark'),
@@ -56,6 +57,7 @@ const [
   import('../api/history'),
   import('../api/history/[id]'),
   import('../api/public/analyze'),
+  import('../api/public/analyses/[id]'),
 ])
 
 const app = express()
@@ -129,6 +131,7 @@ app.patch('/api/api-keys/:id', withQueryParam('id'), adapt(apiKeyByIdHandler as 
 app.delete('/api/api-keys/:id', withQueryParam('id'), adapt(apiKeyByIdHandler as VercelStyleHandler))
 
 app.post('/api/public/analyze', noBuffer, adapt(publicAnalyzeHandler as VercelStyleHandler))
+app.get('/api/public/analyses/:id', withQueryParam('id'), adapt(publicAnalysisByIdHandler as VercelStyleHandler))
 
 if (fs.existsSync(distDir)) {
   app.use(express.static(distDir, {

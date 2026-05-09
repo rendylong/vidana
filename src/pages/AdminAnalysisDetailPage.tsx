@@ -24,6 +24,20 @@ function analysisTypeLabel(value: unknown) {
   return value === 'benchmark' ? '视频对标' : '投放分析'
 }
 
+function statusLabel(value: unknown) {
+  const labels: Record<string, string> = {
+    queued: '排队中',
+    processing: '分析中',
+    canceled: '已取消',
+    pending: '等待中',
+    analyzing: '分析中',
+    completed: '已完成',
+    failed: '失败',
+  }
+
+  return typeof value === 'string' ? labels[value] || value : fieldValue(value)
+}
+
 export default function AdminAnalysisDetailPage() {
   const { id = '' } = useParams()
   const [data, setData] = useState<AdminAnalysisDetail | null>(null)
@@ -71,7 +85,7 @@ export default function AdminAnalysisDetailPage() {
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
         <section className="rounded-lg border border-zinc-200 bg-white p-4 text-sm">
-          <Info label="状态" value={fieldValue(data.status)} />
+          <Info label="状态" value={statusLabel(data.status)} />
           <Info label="类型" value={analysisTypeLabel(data.analysis_type)} />
           <Info label="平台" value={fieldValue(data.platform)} />
           <Info label="分数" value={fieldValue(data.score)} />
